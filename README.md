@@ -55,8 +55,6 @@ Two room rules are toggles:
 - Allow the same track in the queue more than once. By default, the server rejects a duplicate of a playing or queued track; enabling it lets guests stack the same song.
 - Fair rotation, one song per guest. When on, a guest may hold at most one track that is playing or queued. Matching uses a browser cookie that survives nickname edits and reloads. A locked guest sees a greyed-out submit button and a locked nickname input until their song finishes.
 
-Set `ADMIN_PIN` to require a PIN for every admin read and mutation.
-
 ## Layout
 
 - `server/karaoke.mjs`: the queue server, Node built-ins only
@@ -89,7 +87,6 @@ Environment variables:
 - `PORT`: server port, default 7777
 - `HOST`: bind address
 - `ADMIN_PORT`: admin console port, default 7778
-- `ADMIN_PIN`: protect the admin console
 - `KARAQUEUE_VIEW_API` and `KARAQUEUE_SPI_API`: override the bilibili endpoints for testing
 
 ## Installing the Extension

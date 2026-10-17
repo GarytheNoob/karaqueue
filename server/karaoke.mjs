@@ -16,7 +16,7 @@
  *                            only withdraw their own requests)
  *   GET  /api/events      -> SSE stream; broadcasts full state on every change
  *
- * Admin endpoints (ADMIN_PORT, default 7778; gated by ADMIN_PIN if set):
+ * Admin endpoints (ADMIN_PORT, default 7778):
  *   GET  /                -> admin console (static/admin.html)
  *   GET  /api/state       -> full state snapshot
  *   GET  /api/events      -> SSE stream
@@ -27,7 +27,7 @@
  *   POST /api/reorder     -> { id, direction: "up"|"down" }
  *
  * Persistence: server/queue.json (in-memory state, written atomically).
- * Run: node server/karaoke.mjs   (env: PORT, HOST, ADMIN_PORT, ADMIN_PIN)
+ * Run: node server/karaoke.mjs   (env: PORT, HOST, ADMIN_PORT)
  */
 import http from "node:http";
 import fs from "node:fs";
@@ -37,8 +37,6 @@ import { fileURLToPath } from "node:url";
 const PORT = Number(process.env.PORT || 7777);
 const HOST = process.env.HOST || "0.0.0.0";
 const ADMIN_PORT = Number(process.env.ADMIN_PORT || 7778);
-// Optional gate for admin mutations; a PIN is reasonable on shared LANs.
-const ADMIN_PIN = process.env.ADMIN_PIN || "";
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
 const STATIC_DIR = path.join(ROOT, "static");
 const DATA_FILE = path.join(ROOT, "queue.json");
@@ -605,13 +603,6 @@ function serveEvents(req, res) {
   req.on("close", () => sseClients.delete(res));
 }
 
-/** Gate admin requests: any query/header PIN must match ADMIN_PIN. */
-function adminAuthorized(req, url) {
-  if (!ADMIN_PIN) return true;
-  const provided = url.searchParams.get("pin") || req.headers["x-admin-pin"];
-  return provided === ADMIN_PIN;
-}
-
 async function route(req, res, isAdmin = false) {
   if (handlePreflight(req, res)) return;
   const url = new URL(req.url, `http://${req.headers.host}`);
@@ -695,13 +686,8 @@ async function route(req, res, isAdmin = false) {
   res.end("not found");
 }
 
-/* Admin routes: served on the separate admin port. Mutations and reads
-   are gated by ADMIN_PIN when one is configured. */
+/* Admin routes: served on the separate admin port (LAN-trusted, no auth). */
 async function routeAdmin(req, res, url, pathname) {
-  if (!adminAuthorized(req, url)) {
-    return sendJson(res, 403, { ok: false, message: "admin PIN required (?pin= or x-admin-pin header)" });
-  }
-
   if (req.method === "GET" && (pathname === "/" || pathname === "/admin.html")) {
     return serveStatic(res, "admin.html");
   }
@@ -802,6 +788,5 @@ http
 http
   .createServer(adminHandler)
   .listen(ADMIN_PORT, HOST, () => {
-    const pin = ADMIN_PIN ? "PIN protected" : "no PIN set (ADMIN_PIN env to protect)";
-    console.log(`[karaqueue] admin console on http://${HOST}:${ADMIN_PORT} (${pin})`);
+    console.log(`[karaqueue] admin console on http://${HOST}:${ADMIN_PORT}`);
   });
