@@ -56,7 +56,7 @@ function fmtDur(s) {
 
 function card(item, { tag, tagClass, now }) {
   const part = item.page_count > 1 ? ` · P${item.page}` : "";
-  return `<div class="card ${now ? "now" : ""}">
+  return `<div class="card ${now ? "now" : tagClass ? tagClass : ""}">
     <div class="title"><span class="tag ${tagClass}">${tag}</span>${esc(item.title)}${part ? ` <span style="color:#7ab">· P${item.page}</span>` : ""}</div>
     <div class="meta"><span>点歌人：${esc(item.requested_by)}</span><span>${item.duration_s ? fmtDur(item.duration_s) : ""}</span></div>
   </div>`;
@@ -83,7 +83,7 @@ async function refresh() {
 
   const upNext = state.queue[0];
   next.innerHTML = upNext
-    ? card(upNext, { tag: "UP NEXT", tagClass: "upnext", now: false })
+    ? card(upNext, { tag: "NEXT", tagClass: "upnext", now: false })
     : state.current ? empty("队列空，播完这首就收工") : "";
 }
 refresh();
