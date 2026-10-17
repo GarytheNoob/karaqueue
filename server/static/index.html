@@ -42,11 +42,13 @@
   .card .title { font-size: 14px; line-height: 1.4; }
   .card .meta { font-size: 12px; color: #888; margin-top: 4px; display: flex; justify-content: space-between; }
   .card.now { border-color: #2f6fed; }
+  .card.next { border-color: #e0a33f; }
   .tag {
     font-size: 11px; background: #2f6fed; color: #fff; border-radius: 4px;
     padding: 1px 6px; margin-right: 6px; vertical-align: 2px;
   }
   .tag.done { background: #444; color: #aaa; }
+  .tag.next { background: #e0a33f; color: #2b1d00; }
   .empty { color: #666; font-size: 13px; padding: 6px 2px; }
   header { display: flex; justify-content: space-between; align-items: baseline; }
   header small { color: #666; }
@@ -113,10 +115,16 @@ function label(item) {
   return `${esc(item.title)}${part ? ` <span style="color:#7ab">${part}</span>` : ""}`;
 }
 
-function card(item, isNow) {
+function card(item, { now = false, next = false } = {}) {
   const part = item.page_count > 1 ? ` · P${item.page}` : "";
-  const tag = isNow ? `<span class="tag">NOW</span>` : item.status === "played" || item.status === "skipped" ? `<span class="tag done">${item.status === "skipped" ? "跳过" : "已播"}</span>` : "";
-  return `<div class="card ${isNow ? "now" : ""}">
+  const tag = now
+    ? `<span class="tag">NOW</span>`
+    : next
+      ? `<span class="tag next">NEXT</span>`
+      : item.status === "played" || item.status === "skipped"
+        ? `<span class="tag done">${item.status === "skipped" ? "跳过" : "已播"}</span>`
+        : "";
+  return `<div class="card ${now ? "now" : next ? "next" : ""}">
     <div class="title">${tag}${label(item)}</div>
     <div class="meta"><span>点歌人：${esc(item.requested_by)}</span><span>${item.duration_s ? fmtDur(item.duration_s) : ""}</span></div>
   </div>`;
@@ -125,9 +133,9 @@ function card(item, isNow) {
 function render(state) {
   $("queueCount").textContent = `剩 ${state.queue.length} 首`;
   $("historyCount").textContent = state.history.length ? `(${state.history.length})` : "";
-  $("now").innerHTML = state.current ? card(state.current, true) : `<div class="empty">（空闲中，等待点歌）</div>`;
+  $("now").innerHTML = state.current ? card(state.current, { now: true }) : `<div class="empty">（空闲中，等待点歌）</div>`;
   $("queue").innerHTML = state.queue.length
-    ? state.queue.map((i) => card(i)).join("")
+    ? state.queue.map((i, idx) => card(i, { next: idx === 0 })).join("")
     : `<div class="empty">队列空空，快点歌！</div>`;
   $("history").innerHTML = state.history.length
     ? state.history.map((i) => card(i)).join("")
