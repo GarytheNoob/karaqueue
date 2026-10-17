@@ -1,5 +1,5 @@
 /**
- * Nikokara Player - background service worker.
+ * KaraQueue - background service worker.
  *
  * Responsibilities:
  *  - Periodically reconcile the playing tab with the server's `current` item

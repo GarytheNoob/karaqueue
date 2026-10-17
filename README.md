@@ -1,4 +1,4 @@
-# Nikokara Player
+# KaraQueue
 
 A LAN karaoke queue player prototype: people submit bilibili videos (BV id / link / mobile share text) from their phones, a queue server keeps the order, and a Chrome extension drives a bilibili tab to auto-advance to the next requested track. Zero npm dependencies.
 
@@ -34,7 +34,7 @@ Other devices on the LAN use `http://<machine-LAN-IP>:7777` (on macOS, `ipconfig
 
 1. Open `chrome://extensions` in Chrome and enable **Developer mode** (top right)
 2. **Load unpacked** → select this repo's `extension/` directory
-3. Click the Nikokara Player toolbar icon and confirm the server address (defaults to `http://127.0.0.1:7777`; change it if the server runs on another machine)
+3. Click the KaraQueue toolbar icon and confirm the server address (defaults to `http://127.0.0.1:7777`; change it if the server runs on another machine)
 
 ## Usage flow
 
@@ -51,3 +51,4 @@ Other devices on the LAN use `http://<machine-LAN-IP>:7777` (on macOS, `ipconfig
 - Video metadata comes from bilibili's public web API; heavy request rates may trigger rate limiting (no throttling in the prototype — fine for a single-room workload)
 - Popup skip takes effect immediately via on-demand reconciliation; other remote changes sync within ~15 s via an alarm-based poll
 - YouTube / niconico are not supported yet (the resolver reports an error; the source-adapter layer for them is planned)
+- **Disclaimer**: not affiliated with bilibili; videos always play through bilibili's official web player, and the server only fetches public metadata to display titles.

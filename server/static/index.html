@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Nikokara 点歌</title>
+<title>KaraQueue 点歌</title>
 <style>
   :root { color-scheme: dark; }
   * { box-sizing: border-box; }
@@ -57,7 +57,7 @@
 <body>
 <main>
   <header>
-    <h1>Nikokara 点歌</h1>
+    <h1>KaraQueue 点歌</h1>
     <small id="queueCount"></small>
   </header>
 
@@ -97,8 +97,8 @@ const byInput = $("by");
 const msg = $("msg");
 
 // Persist the nickname between sessions.
-byInput.value = localStorage.getItem("nikokara:by") || "";
-byInput.addEventListener("change", () => localStorage.setItem("nikokara:by", byInput.value.trim()));
+byInput.value = localStorage.getItem("karaqueue:by") || "";
+byInput.addEventListener("change", () => localStorage.setItem("karaqueue:by", byInput.value.trim()));
 
 function esc(s) {
   return String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Nikokara Player - queue server (prototype, zero dependencies).
+ * KaraQueue - queue server (prototype, zero dependencies).
  *
  * Endpoints:
  *   GET  /                -> song request page (static/index.html)

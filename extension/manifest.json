@@ -1,6 +1,6 @@
 {
   "manifest_version": 3,
-  "name": "Nikokara Player",
+  "name": "KaraQueue",
   "version": "0.3.2",
   "description": "Drives a bilibili tab from a local karaoke queue server: auto-advance to the next requested video.",
   "permissions": ["tabs", "alarms", "storage"],
@@ -8,7 +8,7 @@
   "background": { "service_worker": "background.js" },
   "action": {
     "default_popup": "popup.html",
-    "default_title": "Nikokara Player"
+    "default_title": "KaraQueue"
   },
   "content_scripts": [
     {

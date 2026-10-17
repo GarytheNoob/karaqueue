@@ -1,5 +1,5 @@
 /**
- * Nikokara Player - content script (bilibili pages).
+ * KaraQueue - content script (bilibili pages).
  *
  * Job is deliberately tiny:
  *  1. Find the <video> element and report its `ended` event to the
@@ -13,7 +13,7 @@
  */
 (() => {
   if (!location.pathname.startsWith("/video/")) return;
-  const log = (...a) => console.debug("[nikokara]", ...a);
+  const log = (...a) => console.debug("[karaqueue]", ...a);
 
   let boundVideo = null;
 
@@ -39,9 +39,9 @@
     video.play().then(
       () => log("autoplay ok"),
       () => {
-        if (document.getElementById("nikokara-resume")) return;
+        if (document.getElementById("karaqueue-resume")) return;
         const btn = document.createElement("button");
-        btn.id = "nikokara-resume";
+        btn.id = "karaqueue-resume";
         btn.textContent = "▶ 继续播放";
         Object.assign(btn.style, {
           position: "fixed", right: "16px", bottom: "16px", zIndex: 999999,
