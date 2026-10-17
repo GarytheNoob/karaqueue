@@ -2,20 +2,20 @@
 
 > Chinese documentation: [README_zh-sc.md](README_zh-sc.md)
 
-A LAN karaoke queue prototype. Guests submit bilibili videos from their phones, a queue server keeps the order, and a Chrome extension drives a bilibili tab to play the next requested track without manual clicks. The server uses only Node built-ins and has no npm dependencies.
+A LAN karaoke queue prototype. Guests submit bilibili or YouTube videos from their phones, a queue server keeps the order, and a Chrome extension drives the big-screen browser to play the next requested track without manual clicks. The server uses only Node built-ins and has no npm dependencies.
 
 ## Requesting Tracks
 
 The submit form accepts:
 
-- BV ids and av ids
-- full watch URLs and `?p=N` multi-part links
-- `b23.tv` short links
-- raw mobile share text such as `【title】 https://b23.tv/xxx`, with the URL extracted automatically
+- BV ids and av ids, full watch URLs and `?p=N` multi-part links, `b23.tv` short links
+- YouTube watch URLs, `youtu.be` short links and shorts links, including inside raw mobile share text
 
-Each part (P) of a multi-part submission counts as one track, and the part index becomes part of the track ID.
+Each part (P) of a multi-part bilibili submission counts as one track, and the part index becomes part of the track ID. Playlists on either platform are not expanded; submitting a YouTube link with a `list=` parameter queues the single video.
 
 bilibili throttles the metadata API under load and answers with an HTML page, often with HTTP 412. A submission still succeeds when that happens. The server checks the local cache first and skips the network on a hit, and entries stay valid for 24 hours. Without a cache entry, the track is enqueued link-only and still plays, with the title showing "metadata missing". Rejection happens only when the video id itself is invalid or missing (bilibili codes -400 and -404). Up front, the server fetches `buvid3` and `buvid4` cookies to reduce how often 412 appears.
+
+YouTube metadata comes from the official keyless oEmbed endpoint: title, author and thumbnail, no duration (the duration cell stays empty, nothing depends on it). Only a missing video (HTTP 404) rejects a submission; private or embed-blocked videos degrade to a link-only item that still plays on youtube.com. Both sources share the same cache and the same degrade ladder, and mixed bilibili/YouTube queues are marked with a red `[YT]` badge on YouTube entries.
 
 ## Queue and Rules
 
@@ -37,7 +37,7 @@ The mobile page has no skip button. Skipping is the host's job.
 
 The extension uses Manifest V3 and drives the big-screen browser.
 
-- Auto-advance when a video ends, by watching the `ended` event on `<video>` and rebinding after single-page navigations.
+- Auto-advance when a video ends, by watching the `ended` event on `<video>` and rebinding after single-page navigations. It drives both bilibili and YouTube watch pages; switching between platforms reuses the same tab.
 - Show a "resume playback" overlay in the bottom-right corner when the browser blocks autoplay; one tap covers the whole session.
 - Provide a popup that configures the server address, opens the current track, and skips the current track immediately. Its NOW/NEXT cards match the request page. A bad address produces a plain-language error instead of a raw JSON parse failure.
 
@@ -87,7 +87,7 @@ Environment variables:
 - `PORT`: server port, default 7777
 - `HOST`: bind address
 - `ADMIN_PORT`: admin console port, default 7778
-- `KARAQUEUE_VIEW_API` and `KARAQUEUE_SPI_API`: override the bilibili endpoints for testing
+- `KARAQUEUE_VIEW_API` and `KARAQUEUE_SPI_API`: override the bilibili endpoints for testing; `KARAQUEUE_OEMBED_API` overrides the YouTube one the same way
 
 ## Installing the Extension
 
@@ -112,8 +112,8 @@ Environment variables:
 
 ## Notes
 
-- Turn off bilibili's native "auto-play next" toggle. Otherwise the page's own autoplay competes with the extension's switching.
+- Turn off bilibili's native "auto-play next" toggle, and YouTube's "Autoplay next video" as well. Otherwise the page's own autoplay competes with the extension's switching.
 - Queue state lives in `server/queue.json` and the metadata cache in `server/meta-cache.json`; both are gitignored. For odd state, run `pkill -f karaoke.mjs` and restart, or delete both files to reset everything.
 - The popup skip takes effect immediately through on-demand reconciliation. Other remote changes sync through an alarm-based poll every 15 seconds.
-- YouTube and niconico are not supported yet. The resolver reports an error, which is expected; the source-adapter layer is planned.
-- **Disclaimer**: this project is not affiliated with bilibili. Videos always play through bilibili's official web player, and the server fetches public metadata only to display titles.
+- YouTube and niconico: YouTube works for single videos (metadata via oEmbed, no duration shown); playlists are treated as one video and niconico is still out of scope. Both the server and the big-screen browser need a network path that can reach YouTube.
+- **Disclaimer**: this project is not affiliated with bilibili or YouTube. Videos always play through the official web players, and the server fetches public metadata only to display titles.
