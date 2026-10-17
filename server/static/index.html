@@ -174,7 +174,16 @@ $("f").addEventListener("submit", async (e) => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ input, by: byInput.value.trim() || "anonymous" }),
     });
-    const body = await res.json();
+    const text = await res.text();
+    let body;
+    try {
+      body = JSON.parse(text);
+    } catch {
+      // The server answered with an HTML page instead of JSON. This build
+      // always answers JSON, so that usually means something else owns
+      // this address/port (e.g. another dev server or network preview).
+      throw new Error("服务器返回了网页而不是 JSON，这个端口上跑的可能不是 KaraQueue 服务（检查 node 进程是否启动成功、端口是否被占用）");
+    }
     if (body.ok) {
       msg.textContent = "已加入队列 ✓ " + body.item.title;
       msg.classList.add("ok");
@@ -184,7 +193,7 @@ $("f").addEventListener("submit", async (e) => {
       msg.textContent = body.message || "提交失败";
     }
   } catch (err) {
-    msg.textContent = "网络错误: " + err;
+    msg.textContent = "点歌失败: " + (err.message || err);
   } finally {
     $("btn").disabled = false;
   }
