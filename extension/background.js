@@ -3,9 +3,11 @@
  *
  * Responsibilities:
  *  - Periodically reconcile the playing tab with the server's `current` item
- *    (covers remote skip/advance triggered from the phone UI).
- *  - On VIDEO_ENDED (from the content script), tell the server to advance and
- *    navigate the tab to the next track.
+ *    (covers remote skip/advance triggered from the phone UI). One tab is
+ *    remembered and reused across reconciles; new tabs are only created
+ *    when no candidate exists at all.
+ *  - On VIDEO_ENDED (from the content script), tell the server to advance
+ *    and navigate the tab to the next track.
  *  - OPEN_CURRENT (from the popup) opens or points a tab at the current item.
  */
 const DEFAULT_SERVER = "http://127.0.0.1:7777";
@@ -75,7 +77,8 @@ async function advance(mark = "played") {
 /* ------------------------------------------------------------------ */
 
 async function findPlayerTab() {
-  const tabs = await chrome.tabs.query({
+  // Narrow first: an actual watch page on either platform.
+  const watch = await chrome.tabs.query({
     url: [
       "*://*.bilibili.com/video/*",
       "*://*.youtube.com/watch*",
@@ -83,7 +86,21 @@ async function findPlayerTab() {
       "*://youtu.be/*",
     ],
   });
-  return tabs[0] ?? null;
+  if (watch[0]) return watch[0];
+  // Broad fallback: any tab on the two platforms. Driving a stray home
+  // page or in-transit redirect beats spawning yet another tab - the
+  // strict watch-path patterns above can miss a tab for seconds at a
+  // time, which used to open a new tab on every 15 s alarm.
+  const anySite = await chrome.tabs.query({
+    url: ["*://*.bilibili.com/*", "*://*.youtube.com/*", "*://youtu.be/*"],
+  });
+  return anySite[0] ?? null;
+}
+
+/** Remember which tab we drive so later reconciles always reuse it,
+ * even when its URL is momentarily something unmatchable. */
+async function rememberPlayerTab(tabId) {
+  if (tabId) await chrome.storage.session.set({ playerTabId: tabId });
 }
 
 /**
@@ -94,17 +111,28 @@ async function reconcile(preferredTabId) {
   const { current } = await getState();
   if (!current) return null;
 
-  let tab = preferredTabId ? await chrome.tabs.get(preferredTabId).catch(() => null) : null;
+  let tab = null;
+  if (preferredTabId) tab = await chrome.tabs.get(preferredTabId).catch(() => null);
+  if (!tab) {
+    // The tab we drove last, whatever its URL is right now. It may be
+    // mid-redirect or on an error page - navigating it is still the
+    // cheapest fix and never spawns anything new.
+    const { playerTabId } = await chrome.storage.session.get("playerTabId");
+    if (playerTabId) tab = await chrome.tabs.get(playerTabId).catch(() => null);
+  }
   if (!tab || !tab.url) tab = await findPlayerTab();
 
-  if (tab && trackIdentity(tab.url) === current.id) return tab;
-  if (tab) {
-    await chrome.tabs.update(tab.id, { url: current.web_url });
-    return tab;
+  if (!tab) {
+    // Nothing usable anywhere: one fresh background tab, remembered.
+    const created = await chrome.tabs.create({ url: current.web_url, active: false });
+    await rememberPlayerTab(created.id);
+    return null;
   }
-  // No existing player tab: create one.
-  await chrome.tabs.create({ url: current.web_url, active: false });
-  return null;
+
+  await rememberPlayerTab(tab.id);
+  if (trackIdentity(tab.url) === current.id) return tab;
+  await chrome.tabs.update(tab.id, { url: current.web_url });
+  return tab;
 }
 
 /* ------------------------------------------------------------------ */
