@@ -63,10 +63,15 @@ Set `ADMIN_PIN=xxxx` to require a PIN for all admin reads/mutations (the page st
 4. The host can skip immediately via the popup's skip button; the popup also shows NOW/NEXT cards
 5. Want to hear a song again? Find it on the request page's history page and submit it once more
 
+## Troubleshooting
+
+- **`TypeError: Failed to fetch`** in the popup: nothing answered at the configured address — is the queue server actually running (`node server/karaoke.mjs` on the *host* machine), and is the address reachable? Test by opening `http://<host-ip>:7777/api/state` in a browser; you should see a JSON blob.
+- **`Unexpected token '<', "<!DOCTYPE "... is not valid JSON`**: the configured address returned an HTML page instead of KaraQueue's JSON — almost always a missing `:7777` port (hitting some other web service on port 80, e.g. a router admin page). The address must look like `http://192.168.1.5:7777`.
+- **Guests do not need the extension at all.** The extension only drives the big-screen browser. Phones request songs at `http://<host-ip>:7777`.
+
 ## Notes & known limitations
 
-- **Turn off bilibili's native "auto-play next" toggle**, otherwise the page's own autoplay fights with the extension's switching
-- Queue state persists in `server/queue.json` (gitignored); when troubleshooting weird state, `pkill -f karaoke.mjs` and restart, or delete the file for a clean slate
+- **Turn off bilibili's native "auto-play next" toggle**, otherwise the page's own autoplay fights with the extension's switching- Queue state persists in `server/queue.json` (gitignored); when troubleshooting weird state, `pkill -f karaoke.mjs` and restart, or delete the file for a clean slate
 - Video metadata comes from bilibili's public web API; heavy request rates may trigger rate limiting (no throttling in the prototype — fine for a single-room workload)
 - Popup skip takes effect immediately via on-demand reconciliation; other remote changes sync within ~15 s via an alarm-based poll
 - YouTube / niconico are not supported yet (the resolver reports an error; the source-adapter layer for them is planned)

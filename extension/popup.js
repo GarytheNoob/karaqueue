@@ -3,6 +3,28 @@
 const DEFAULT_SERVER = "http://127.0.0.1:7777";
 const status = document.getElementById("status");
 
+/** Fetch and parse JSON with a human-readable failure message. */
+async function fetchJson(url, options = {}) {
+  let res;
+  try {
+    res = await fetch(url, options);
+  } catch {
+    // Network-level failure: nothing answered (server down / wrong address).
+    throw new Error("无法连接到队列服务（服务是否在运行？地址是否可达？）");
+  }
+  const text = await res.text();
+  let data;
+  try {
+    data = JSON.parse(text);
+  } catch {
+    // HTML came back: almost always a wrong address, e.g. missing the
+    // :7777 port or a device's own web UI (router page) at that address.
+    throw new Error("该地址返回的不是 KaraQueue 数据（JSON），请检查地址是否带上 :7777 端口、且指向运行服务的那台电脑");
+  }
+  if (!res.ok) throw new Error(data.message || `HTTP ${res.status}`);
+  return data;
+}
+
 chrome.storage.sync.get({ serverUrl: DEFAULT_SERVER }).then(({ serverUrl }) => {
   document.getElementById("serverUrl").value = serverUrl;
 });
@@ -31,11 +53,11 @@ document.getElementById("skip").addEventListener("click", async () => {
   status.textContent = "跳过中…";
   try {
     const base = (await chrome.storage.sync.get({ serverUrl: DEFAULT_SERVER })).serverUrl.replace(/\/+$/, "");
-    await fetch(`${base}/api/skip`, { method: "POST" });
+    await fetchJson(`${base}/api/skip`, { method: "POST" });
     await chrome.runtime.sendMessage({ type: "OPEN_CURRENT" });
     status.textContent = "已跳过 ✓";
   } catch (err) {
-    status.textContent = "跳过失败: " + err;
+    status.textContent = "跳过失败: " + err.message;
   }
   await refresh();
 });
@@ -70,9 +92,9 @@ async function refresh() {
   let state;
   try {
     const base = (await chrome.storage.sync.get({ serverUrl: DEFAULT_SERVER })).serverUrl.replace(/\/+$/, "");
-    state = await (await fetch(`${base}/api/state`)).json();
-  } catch {
-    now.innerHTML = empty("无法连接队列服务（检查服务是否运行 / 地址是否正确）");
+    state = await fetchJson(`${base}/api/state`);
+  } catch (err) {
+    now.innerHTML = empty("无法连接队列服务：" + esc(err.message));
     next.innerHTML = "";
     return;
   }
