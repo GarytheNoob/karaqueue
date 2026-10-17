@@ -32,7 +32,7 @@ async function refresh() {
     const state = await res.json();
     now.textContent = state.current
       ? `正在播放：${state.current.title}（P${state.current.page}）`
-      : "空闲中：暂无播放曲目";
+      : `空闲中（队列剩 ${state.queue.length} 首；空闲时新提交的歌会自动开始播放）`;
   } catch {
     now.textContent = "无法连接队列服务（检查服务是否运行 / 地址是否正确）";
   }
