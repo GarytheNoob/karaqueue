@@ -1,0 +1,8 @@
+# Local data
+server/queue.json
+
+# macOS
+.DS_Store
+
+# Node (in case of future tooling)
+node_modules/
