@@ -71,8 +71,9 @@ Set `ADMIN_PIN=xxxx` to require a PIN for all admin reads/mutations (the page st
 
 ## Notes & known limitations
 
-- **Turn off bilibili's native "auto-play next" toggle**, otherwise the page's own autoplay fights with the extension's switching- Queue state persists in `server/queue.json` (gitignored); when troubleshooting weird state, `pkill -f karaoke.mjs` and restart, or delete the file for a clean slate
-- Video metadata comes from bilibili's public web API; heavy request rates may trigger rate limiting (no throttling in the prototype — fine for a single-room workload)
+- **Turn off bilibili's native "auto-play next" toggle**, otherwise the page's own autoplay fights with the extension's switching- Queue state persists in `server/queue.json`, metadata cache in `server/meta-cache.json` (both gitignored); when troubleshooting weird state, `pkill -f karaoke.mjs` and restart, or delete both files for a clean slate
+- **Bilibili risk-control tolerance**: when the metadata API is blocked (e.g. HTTP 412), submissions still succeed — a cached copy is used when available; otherwise the track is enqueued link-only (plays fine, title shows "metadata missing"). Only genuinely invalid/missing videos (bilibili codes -400/-404) are rejected. Cache hits within 24 h make no network call at all, which itself lowers 412 exposure
+- `buvid3/buvid4` cookies are fetched up front via bilibili's finger/spi endpoint to further reduce the chance of 412
 - Popup skip takes effect immediately via on-demand reconciliation; other remote changes sync within ~15 s via an alarm-based poll
 - YouTube / niconico are not supported yet (the resolver reports an error; the source-adapter layer for them is planned)
 - **Disclaimer**: not affiliated with bilibili; videos always play through bilibili's official web player, and the server only fetches public metadata to display titles.
