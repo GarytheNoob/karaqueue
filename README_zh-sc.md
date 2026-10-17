@@ -28,6 +28,25 @@ PORT=8080 HOST=127.0.0.1 node server/karaoke.mjs
 
 局域网内设备访问 `http://<本机局域网IP>:7777`（macOS 可用 `ipconfig getifaddr en0` 查询本机 IP）。
 
+## 管理后台
+
+另一个端口（默认 `7778`）提供面向房主的手机端管理后台：
+
+```sh
+node server/karaoke.mjs
+# => [karaqueue] queue server on http://0.0.0.0:7777
+# => [karaqueue] admin console on http://0.0.0.0:7778 (no PIN set (ADMIN_PIN env to protect))
+```
+
+房主手机打开 `http://<本机局域网IP>:7778` 即可：
+
+- **跳过**当前曲目（立即切歌，与插件弹窗等效）
+- **移出队列**：删除某个已点歌曲
+- **调整歌单顺序**（上移/下移）
+- **切换房间规则**："允许队列中重复点同一首歌"（关闭：正在播放/已在队列中的重复提交被拒绝；开启：允许同一首歌在队列中叠多条）
+
+设置 `ADMIN_PIN=xxxx` 后管理后台所有读写需要 PIN（页面会把 PIN 存在手机上）。不设置则局域网内任何人都能操作，建议局域网共用时开启。`ADMIN_PORT` 可改端口。
+
 ## 安装插件（Load unpacked）
 
 1. Chrome 打开 `chrome://extensions`，右上角开启 **开发者模式**

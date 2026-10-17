@@ -30,6 +30,25 @@ PORT=8080 HOST=127.0.0.1 node server/karaoke.mjs
 
 Other devices on the LAN use `http://<machine-LAN-IP>:7777` (on macOS, `ipconfig getifaddr en0` shows your IP).
 
+## Admin console
+
+A separate port (default `7778`) serves a phone-friendly admin console for the host:
+
+```sh
+node server/karaoke.mjs
+# => [karaqueue] queue server on http://0.0.0.0:7777
+# => [karaqueue] admin console on http://0.0.0.0:7778 (no PIN set (ADMIN_PIN env to protect))
+```
+
+Open `http://<machine-LAN-IP>:7778` on the host's phone to:
+
+- **skip** the current track (immediate, same as the extension popup)
+- **delete** a queued track
+- **reorder** the queue (move up/down)
+- **toggle the room rule** "allow the same track to be queued multiple times" (off: duplicates of queued/playing tracks are rejected; on: guests may stack the same song)
+
+Set `ADMIN_PIN=xxxx` to require a PIN for all admin reads/mutations (the page stores it on the phone). Without it, anyone on the LAN can use the console. Set `ADMIN_PORT` to change the port. The extension version of the app stays independent (`extension/manifest.json`).
+
 ## Installing the extension (Load unpacked)
 
 1. Open `chrome://extensions` in Chrome and enable **Developer mode** (top right)
