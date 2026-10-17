@@ -49,6 +49,10 @@
   }
   .tag.done { background: #444; color: #aaa; }
   .tag.next { background: #e0a33f; color: #2b1d00; }
+  .idx {
+    color: #67718a; font-size: 12px; font-weight: 600;
+    margin-right: 7px; font-variant-numeric: tabular-nums;
+  }
   .empty { color: #666; font-size: 13px; padding: 6px 2px; }
   header { display: flex; justify-content: space-between; align-items: baseline; }
   header small { color: #666; }
@@ -115,7 +119,7 @@ function label(item) {
   return `${esc(item.title)}${part ? ` <span style="color:#7ab">${part}</span>` : ""}`;
 }
 
-function card(item, { now = false, next = false } = {}) {
+function card(item, { now = false, next = false, index = 0 } = {}) {
   const part = item.page_count > 1 ? ` · P${item.page}` : "";
   const tag = now
     ? `<span class="tag">NOW</span>`
@@ -124,8 +128,11 @@ function card(item, { now = false, next = false } = {}) {
       : item.status === "played" || item.status === "skipped"
         ? `<span class="tag done">${item.status === "skipped" ? "跳过" : "已播"}</span>`
         : "";
+  const idx = index
+    ? `<span class="idx">${index}.</span>`
+    : "";
   return `<div class="card ${now ? "now" : next ? "next" : ""}">
-    <div class="title">${tag}${label(item)}</div>
+    <div class="title">${idx}${tag}${label(item)}</div>
     <div class="meta"><span>点歌人：${esc(item.requested_by)}</span><span>${item.duration_s ? fmtDur(item.duration_s) : ""}</span></div>
   </div>`;
 }
@@ -137,8 +144,10 @@ function render(state) {
   $("queue").innerHTML = state.queue.length
     ? state.queue.map((i, idx) => card(i, { next: idx === 0 })).join("")
     : `<div class="empty">队列空空，快点歌！</div>`;
+  // History is stored newest-first on the server; display oldest-first so
+  // index 1 is the first song ever played, newest at the bottom.
   $("history").innerHTML = state.history.length
-    ? state.history.map((i) => card(i)).join("")
+    ? [...state.history].reverse().map((item, idx) => card(item, { index: idx + 1 })).join("")
     : `<div class="empty">还没有播过。</div>`;
 }
 
