@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<style>
+  body { font-family: system-ui, sans-serif; width: 280px; margin: 0; padding: 12px; background: #14141a; color: #eee; }
+  h1 { font-size: 14px; margin: 0 0 10px; }
+  input, button { width: 100%; box-sizing: border-box; border-radius: 8px; padding: 8px 10px; font-size: 13px; }
+  input { background: #22222a; border: 1px solid #3a3a44; color: inherit; margin-bottom: 8px; }
+  button { background: #2f6fed; border: 0; color: #fff; font-weight: 600; cursor: pointer; margin-bottom: 6px; }
+  button.ghost { background: transparent; border: 1px solid #555; color: #bbb; font-weight: 400; }
+  #status { font-size: 12px; color: #8f8; min-height: 15px; }
+  #now { font-size: 12px; color: #bbb; margin-top: 8px; line-height: 1.4; }
+</style>
+</head>
+<body>
+  <h1>Nikokara Player</h1>
+  <input id="serverUrl" placeholder="队列服务地址，如 http://192.168.1.5:7777" />
+  <button id="save">保存服务地址</button>
+  <button id="open" class="ghost">打开 / 播放当前曲目</button>
+  <div id="status"></div>
+  <div id="now"></div>
+  <script src="popup.js"></script>
+</body>
+</html>
