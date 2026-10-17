@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Nikokara Player",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Drives a bilibili tab from a local karaoke queue server: auto-advance to the next requested video.",
   "permissions": ["tabs", "alarms", "storage"],
   "host_permissions": ["http://*/*"],

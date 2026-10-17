@@ -58,7 +58,7 @@ function card(item, { tag, tagClass, now }) {
   const part = item.page_count > 1 ? ` · P${item.page}` : "";
   return `<div class="card ${now ? "now" : ""}">
     <div class="title"><span class="tag ${tagClass}">${tag}</span>${esc(item.title)}${part ? ` <span style="color:#7ab">· P${item.page}</span>` : ""}</div>
-    <div class="meta"><span>by ${esc(item.requested_by)}</span><span>${esc(item.uploader)}${item.duration_s ? " · " + fmtDur(item.duration_s) : ""}</span></div>
+    <div class="meta"><span>点歌人：${esc(item.requested_by)}</span><span>${item.duration_s ? fmtDur(item.duration_s) : ""}</span></div>
   </div>`;
 }
 
