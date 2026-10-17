@@ -2,16 +2,26 @@
 /**
  * KaraQueue - queue server (prototype, zero dependencies).
  *
- * Endpoints:
+ * Public endpoints (PORT, default 7777):
  *   GET  /                -> song request page (static/index.html)
- *   GET  /api/state       -> { current, queue, history } snapshot
+ *   GET  /api/state       -> full state snapshot
  *   POST /api/submit      -> body { input, by }; resolves input, enqueues it
  *   POST /api/advance     -> mark current as played, promote the next item
  *   POST /api/skip        -> mark current as skipped, promote the next item
  *   GET  /api/events      -> SSE stream; broadcasts full state on every change
  *
+ * Admin endpoints (ADMIN_PORT, default 7778; gated by ADMIN_PIN if set):
+ *   GET  /                -> admin console (static/admin.html)
+ *   GET  /api/state       -> full state snapshot
+ *   GET  /api/events      -> SSE stream
+ *   GET  /api/config      -> { config }
+ *   POST /api/config      -> { allowQueuedDuplicates: boolean }
+ *   POST /api/skip        -> skip the current track
+ *   POST /api/delete      -> { id }; remove a queued track
+ *   POST /api/reorder     -> { id, direction: "up"|"down" }
+ *
  * Persistence: server/queue.json (in-memory state, written atomically).
- * Run: node server/karaoke.mjs   (env: PORT, HOST)
+ * Run: node server/karaoke.mjs   (env: PORT, HOST, ADMIN_PORT, ADMIN_PIN)
  */
 import http from "node:http";
 import fs from "node:fs";
@@ -20,6 +30,9 @@ import { fileURLToPath } from "node:url";
 
 const PORT = Number(process.env.PORT || 7777);
 const HOST = process.env.HOST || "0.0.0.0";
+const ADMIN_PORT = Number(process.env.ADMIN_PORT || 7778);
+// Optional gate for admin mutations; a PIN is reasonable on shared LANs.
+const ADMIN_PIN = process.env.ADMIN_PIN || "";
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
 const STATIC_DIR = path.join(ROOT, "static");
 const DATA_FILE = path.join(ROOT, "queue.json");
@@ -30,7 +43,14 @@ const BROWSER_UA =
   "(KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36";
 
 /** Tracks are keys by `${platform}:${video_id}:p${page}`. */
-const state = { current: null, queue: [], history: [], revision: 0 };
+const state = {
+  current: null,
+  queue: [],
+  history: [],
+  config: { allowQueuedDuplicates: false },
+  revision: 0,
+};
+const DEFAULT_CONFIG = { allowQueuedDuplicates: false };
 const sseClients = new Set();
 
 /* ------------------------------------------------------------------ */
@@ -44,6 +64,8 @@ function loadState() {
       state.current = raw.current ?? null;
       state.queue = raw.queue ?? [];
       state.history = raw.history ?? [];
+      // Merge over defaults so older state files keep working.
+      state.config = { ...DEFAULT_CONFIG, ...(raw.config ?? {}) };
       state.revision = raw.revision ?? 0;
       console.log(`[state] restored from ${DATA_FILE}`);
     }
@@ -164,12 +186,16 @@ function makeItem(view, page, requestedBy) {
 /* ------------------------------------------------------------------ */
 
 /**
- * Find the item if it is already playing or queued. Played history is
- * deliberately NOT checked: re-requesting a played track is allowed,
- * while duplicate queue entries are not.
+ * Find an in-flight duplicate. Behavior depends on the admin config:
+ *  - the currently playing track is always rejected;
+ *  - tracks already queued are rejected unless the admin allowed that
+ *    (then everybody may pile the same song into the queue).
+ * Played history is deliberately NOT checked: re-requesting a played
+ * track is always allowed.
  */
 function findInQueue(item) {
   if (state.current?.id === item.id) return state.current;
+  if (state.config.allowQueuedDuplicates) return null;
   return state.queue.find((i) => i.id === item.id);
 }
 
@@ -206,6 +232,40 @@ function promoteNextIfIdle() {
   state.revision += 1;
   saveState();
   broadcast();
+}
+
+/** Remove a queued item by id (admin). Returns the removed item or null. */
+function deleteQueued(id) {
+  const idx = state.queue.findIndex((i) => i.id === id);
+  if (idx < 0) return null;
+  const [removed] = state.queue.splice(idx, 1);
+  state.revision += 1;
+  saveState();
+  broadcast();
+  return removed;
+}
+
+/** Move a queued item up or down by one position (admin). */
+function reorderQueued(id, direction) {
+  const idx = state.queue.findIndex((i) => i.id === id);
+  if (idx < 0) return { ok: false, message: "not in queue" };
+  const target = direction === "up" ? idx - 1 : idx + 1;
+  if (target < 0) return { ok: false, message: "already at the top of the queue" };
+  if (target >= state.queue.length) return { ok: false, message: "already at the bottom of the queue" };
+  [state.queue[idx], state.queue[target]] = [state.queue[target], state.queue[idx]];
+  state.revision += 1;
+  saveState();
+  broadcast();
+  return { ok: true };
+}
+
+/** Change an admin config flag. */
+function setConfig(patch) {
+  state.config = { ...state.config, ...patch };
+  state.revision += 1;
+  saveState();
+  broadcast();
+  return state.config;
 }
 
 /* ------------------------------------------------------------------ */
@@ -266,6 +326,7 @@ function publicState() {
     current: state.current,
     queue: state.queue,
     history: state.history,
+    config: state.config,
   };
 }
 
@@ -280,19 +341,40 @@ setInterval(() => {
   for (const client of sseClients) client.write(": ping\n\n");
 }, 15000).unref();
 
-function serveIndex(res) {
-  const file = path.join(STATIC_DIR, "index.html");
+function serveStatic(res, name) {
+  const file = path.join(STATIC_DIR, name);
   res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
   res.end(fs.readFileSync(file));
 }
 
-async function route(req, res) {
+function serveEvents(req, res) {
+  res.writeHead(200, {
+    "Content-Type": "text/event-stream",
+    "Cache-Control": "no-cache",
+    Connection: "keep-alive",
+    "Access-Control-Allow-Origin": "*",
+  });
+  res.write(`event: state\ndata: ${JSON.stringify(publicState())}\n\n`);
+  sseClients.add(res);
+  req.on("close", () => sseClients.delete(res));
+}
+
+/** Gate admin requests: any query/header PIN must match ADMIN_PIN. */
+function adminAuthorized(req, url) {
+  if (!ADMIN_PIN) return true;
+  const provided = url.searchParams.get("pin") || req.headers["x-admin-pin"];
+  return provided === ADMIN_PIN;
+}
+
+async function route(req, res, isAdmin = false) {
   if (handlePreflight(req, res)) return;
   const url = new URL(req.url, `http://${req.headers.host}`);
   const { pathname } = url;
 
+  if (isAdmin) return routeAdmin(req, res, url, pathname);
+
   if (req.method === "GET" && (pathname === "/" || pathname === "/index.html")) {
-    return serveIndex(res);
+    return serveStatic(res, "index.html");
   }
 
   if (req.method === "GET" && pathname === "/api/state") {
@@ -300,16 +382,7 @@ async function route(req, res) {
   }
 
   if (req.method === "GET" && pathname === "/api/events") {
-    res.writeHead(200, {
-      "Content-Type": "text/event-stream",
-      "Cache-Control": "no-cache",
-      Connection: "keep-alive",
-      "Access-Control-Allow-Origin": "*",
-    });
-    res.write(`event: state\ndata: ${JSON.stringify(publicState())}\n\n`);
-    sseClients.add(res);
-    req.on("close", () => sseClients.delete(res));
-    return;
+    return serveEvents(req, res);
   }
 
   if (req.method === "POST" && pathname === "/api/submit") {
@@ -343,19 +416,98 @@ async function route(req, res) {
   res.end("not found");
 }
 
+/* Admin routes: served on the separate admin port. Mutations and reads
+   are gated by ADMIN_PIN when one is configured. */
+async function routeAdmin(req, res, url, pathname) {
+  if (!adminAuthorized(req, url)) {
+    return sendJson(res, 403, { ok: false, message: "admin PIN required (?pin= or x-admin-pin header)" });
+  }
+
+  if (req.method === "GET" && (pathname === "/" || pathname === "/admin.html")) {
+    return serveStatic(res, "admin.html");
+  }
+
+  if (req.method === "GET" && pathname === "/api/state") {
+    return sendJson(res, 200, publicState());
+  }
+
+  if (req.method === "GET" && pathname === "/api/events") {
+    return serveEvents(req, res);
+  }
+
+  if (req.method === "GET" && pathname === "/api/config") {
+    return sendJson(res, 200, { ok: true, config: state.config });
+  }
+
+  if (req.method === "POST" && pathname === "/api/config") {
+    const body = await readJsonBody(req);
+    const patch = {};
+    if (typeof body.allowQueuedDuplicates === "boolean") {
+      patch.allowQueuedDuplicates = body.allowQueuedDuplicates;
+    }
+    if (!Object.keys(patch).length) {
+      return sendJson(res, 400, { ok: false, message: "no recognized config keys" });
+    }
+    const config = setConfig(patch);
+    return sendJson(res, 200, { ok: true, config });
+  }
+
+  if (req.method === "POST" && pathname === "/api/skip") {
+    return sendJson(res, 200, advance("skipped"));
+  }
+
+  if (req.method === "POST" && pathname === "/api/delete") {
+    const body = await readJsonBody(req);
+    const removed = deleteQueued(String(body.id ?? ""));
+    if (!removed) {
+      return sendJson(res, 404, { ok: false, message: `id ${body.id} is not in the queue` });
+    }
+    return sendJson(res, 200, { ok: true, removed });
+  }
+
+  if (req.method === "POST" && pathname === "/api/reorder") {
+    const body = await readJsonBody(req);
+    const direction = body.direction === "up" || body.direction === "down" ? body.direction : null;
+    if (!direction) {
+      return sendJson(res, 400, { ok: false, message: "direction must be \"up\" or \"down\"" });
+    }
+    const result = reorderQueued(String(body.id ?? ""), direction);
+    return sendJson(res, result.ok ? 200 : 404, result);
+  }
+
+  res.writeHead(404, { "Access-Control-Allow-Origin": "*" });
+  res.end("not found");
+}
+
 /* ------------------------------------------------------------------ */
 /* Bootstrap                                                           */
 /* ------------------------------------------------------------------ */
 
 loadState();
 promoteNextIfIdle(); // resume jukebox after a restart with a non-empty queue
+
+const requestHandler = (req, res) => {
+  route(req, res).catch((err) => {
+    console.error("[http]", err);
+    sendJson(res, 500, { ok: false, message: "internal error" });
+  });
+};
+
+const adminHandler = (req, res) => {
+  route(req, res, true).catch((err) => {
+    console.error("[admin.http]", err);
+    sendJson(res, 500, { ok: false, message: "internal error" });
+  });
+};
+
 http
-  .createServer((req, res) => {
-    route(req, res).catch((err) => {
-      console.error("[http]", err);
-      sendJson(res, 500, { ok: false, message: "internal error" });
-    });
-  })
+  .createServer(requestHandler)
   .listen(PORT, HOST, () => {
-    console.log(`[karaoke] queue server on http://${HOST}:${PORT}`);
+    console.log(`[karaqueue] queue server on http://${HOST}:${PORT}`);
+  });
+http
+  .createServer(adminHandler)
+  .listen(ADMIN_PORT, HOST, () => {
+    const pin = ADMIN_PIN ? "PIN protected" : "no PIN set (ADMIN_PIN env to protect)";
+    console.log(`[karaqueue] admin console on http://${HOST}:${ADMIN_PORT} (${pin})`);
   });

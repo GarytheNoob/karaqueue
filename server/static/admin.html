@@ -1,0 +1,184 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>KaraQueue 管理后台</title>
+<style>
+  /* Shares the card design language of the request page. */
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: system-ui, -apple-system, "PingFang SC", sans-serif; background: #101014; color: #e8e8ee; min-height: 100vh; }
+  main { max-width: 560px; margin: 0 auto; padding: 20px 16px 48px; }
+  h1 { font-size: 20px; margin: 8px 0 16px; }
+  h2 { font-size: 14px; margin: 24px 0 8px; color: #9aa; letter-spacing: .05em; }
+  input[type="text"], input[type="password"] {
+    background: #1c1c22; border: 1px solid #33333d; border-radius: 10px;
+    padding: 10px 14px; color: inherit; font-size: 14px; width: 100%;
+  }
+  input:focus { outline: none; border-color: #58a6ff; }
+  button {
+    background: #2f6fed; color: #fff; border: 0; border-radius: 10px;
+    padding: 12px; font-size: 16px; font-weight: 600; cursor: pointer;
+  }
+  button.mini {
+    background: #1c1c22; border: 1px solid #3a3a44; color: #bbb;
+    font-size: 13px; font-weight: 400; padding: 6px 10px; width: auto;
+  }
+  button.mini.danger { color: #f66; border-color: #633; }
+  button.mini:disabled { opacity: .35; cursor: default; }
+  .card { background: #17171d; border: 1px solid #26262e; border-radius: 12px; padding: 10px 12px; margin-bottom: 8px; }
+  .card.now { border-color: #2f6fed; }
+  .card .title { font-size: 14px; line-height: 1.4; }
+  .card .meta { font-size: 12px; color: #888; margin-top: 4px; display: flex; justify-content: space-between; }
+  .tag { font-size: 11px; background: #2f6fed; color: #fff; border-radius: 4px; padding: 1px 6px; margin-right: 6px; vertical-align: 2px; }
+  .idx { color: #67718a; font-size: 12px; font-weight: 600; margin-right: 7px; font-variant-numeric: tabular-nums; }
+  .empty { color: #666; font-size: 13px; padding: 6px 2px; }
+  .actions { margin-top: 8px; display: flex; gap: 6px; }
+  .bar { display: flex; gap: 8px; align-items: center; }
+  .configbox { display: flex; gap: 10px; align-items: center; background: #17171d; border: 1px solid #26262e; border-radius: 12px; padding: 12px; font-size: 14px; }
+  .configbox input { width: 18px; height: 18px; accent-color: #2f6fed; }
+  .hint { color: #778; font-size: 12px; margin-top: 6px; line-height: 1.5; }
+</style>
+</head>
+<body>
+<main>
+  <h1>KaraQueue 管理后台</h1>
+
+  <input type="password" id="pin" placeholder="后台 PIN（未设置 ADMIN_PIN 可留空）" autocomplete="off" />
+
+  <h2>正在播放</h2>
+  <div id="now"></div>
+  <div class="actions"><button class="mini" id="skip">跳过当前，直接播下一首</button></div>
+
+  <h2>队列</h2>
+  <div class="hint">↑↓ 调整顺序 · ✕ 移出队列。改动实时广播到大屏和所有点歌页。</div>
+  <div id="queue"></div>
+
+  <h2>点歌规则</h2>
+  <div class="configbox">
+    <input type="checkbox" id="allowQueuedDuplicates" />
+    <label for="allowQueuedDuplicates">允许队列中重复点同一首歌</label>
+  </div>
+  <div class="hint">关闭：同一首歌重复提交会被拒绝（正在播放/已在队列中）。开启：同一首歌可以在排队里出现多次。</div>
+</main>
+
+<script>
+"use strict";
+/* Admin console: delete/reorder queue items, skip, and toggle the
+   queued-duplicate rule. Reads state via SSE with a pairing initial
+   fetch, mirroring the request page. */
+const $ = (id) => document.getElementById(id);
+const pinInput = $("pin");
+pinInput.value = localStorage.getItem("karaqueue:adminPin") || "";
+pinInput.addEventListener("change", () => {
+  localStorage.setItem("karaqueue:adminPin", pinInput.value.trim());
+  reconnect();
+});
+
+function authless() {
+  return pinInput.value.trim().length === 0;
+}
+
+/* Some endpoints exist with another meaning on the public port (skip on
+   the public API is unauthenticated); the admin console always talks to
+   the admin port explicitly. */
+const BASE = `${location.origin}`;
+
+function esc(s) {
+  return String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+
+function fmtDur(s) {
+  if (!s) return "";
+  const m = Math.floor(s / 60), r = s % 60;
+  return `${m}:${String(r).padStart(2, "0")}`;
+}
+
+function label(item) {
+  return esc(item.title) + (item.page_count > 1 ? ` <span style="color:#7ab">· P${item.page}</span>` : "");
+}
+
+function withPin(path) {
+  return authless() ? BASE + path : `${BASE}${path}?pin=${encodeURIComponent(pinInput.value.trim())}`;
+}
+
+async function mutate(path, body) {
+  const res = await fetch(withPin(path), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: body ? JSON.stringify(body) : "{}",
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || data.ok === false) throw new Error(data.message || `HTTP ${res.status}`);
+  return data;
+}
+
+function card(item, { now = false, index = 0 } = {}) {
+  const idx = index ? `<span class="idx">${index}.</span>` : "";
+  return `<div class="card ${now ? "now" : ""}">
+    <div class="title">${idx}${now ? `<span class="tag">NOW</span>` : ""}${label(item)}</div>
+    <div class="meta"><span>点歌人：${esc(item.requested_by)}</span><span>${item.duration_s ? fmtDur(item.duration_s) : ""}</span></div>
+    ${!now ? `<div class="actions">
+      <button class="mini" data-move="up" data-id="${esc(item.id)}" ${index <= 1 ? "disabled" : ""}>↑ 上移</button>
+      <button class="mini" data-move="down" data-id="${esc(item.id)}" ${index >= 999 ? "disabled" : ""}>↓ 下移</button>
+      <button class="mini danger" data-del="${esc(item.id)}">✕ 移出队列</button>
+    </div>` : ""}
+  </div>`;
+}
+
+function render(state) {
+  $("now").innerHTML = state.current
+    ? card(state.current, { now: true })
+    : `<div class="empty">（空闲中，等待点歌）</div>`;
+  $("queue").innerHTML = state.queue.length
+    ? state.queue.map((i, idx) => card(i, { index: idx + 1 })).join("")
+    : `<div class="empty">队列空空。</div>`;
+  const box = $("allowQueuedDuplicates");
+  if (box.checked !== !!state.config.allowQueuedDuplicates) box.checked = !!state.config.allowQueuedDuplicates;
+}
+
+/* Click handling for the queue action buttons. */
+document.addEventListener("click", async (e) => {
+  const t = e.target;
+  try {
+    if (t.dataset.del) {
+      await mutate("/api/delete", { id: t.dataset.del });
+    } else if (t.dataset.move === "up" || t.dataset.move === "down") {
+      await mutate("/api/reorder", { id: t.dataset.id, direction: t.dataset.move });
+    } else if (t.id === "skip") {
+      await mutate("/api/skip");
+    } else {
+      return;
+    }
+    await refresh();
+  } catch (err) {
+    alert("操作失败：" + err.message);
+  }
+});
+
+$("allowQueuedDuplicates").addEventListener("change", async (e) => {
+  try {
+    await mutate("/api/config", { allowQueuedDuplicates: e.target.checked });
+  } catch (err) {
+    alert("保存失败：" + err.message);
+    e.target.checked = !e.target.checked;
+  }
+});
+
+async function refresh() {
+  const res = await fetch(withPin("/api/state"));
+  render(await res.json());
+}
+
+let es = null;
+function reconnect() {
+  if (es) es.close();
+  refresh().catch(() => {});
+  es = new EventSource(withPin("/api/events"));
+  es.addEventListener("state", (e) => render(JSON.parse(e.data)));
+}
+reconnect();
+</script>
+</body>
+</html>
