@@ -15,6 +15,14 @@
   h1 { font-size: 20px; margin: 8px 0 16px; }
   h2 { font-size: 14px; margin: 24px 0 8px; color: #9aa; letter-spacing: .05em; }
   form { display: flex; flex-direction: column; gap: 8px; }
+  .history-link {
+    display: block; text-align: center; text-decoration: none;
+    background: #17171d; border: 1px dashed #33333d; border-radius: 10px;
+    padding: 10px; color: #7ab; font-size: 13px;
+  }
+  .view { display: none; }
+  .view.active { display: block; }
+  .back { color: #7ab; text-decoration: none; font-size: 14px; flex: none; }
   input {
     background: #1c1c22; border: 1px solid #33333d; border-radius: 10px;
     padding: 12px 14px; color: inherit; font-size: 16px; width: 100%;
@@ -58,14 +66,24 @@
     <div class="msg" id="msg"></div>
   </form>
 
-  <h2>正在播放</h2>
-  <div id="now"></div>
+  <a class="history-link" href="#/history">已播历史 <span id="historyCount"></span> ›</a>
 
-  <h2>队列</h2>
-  <div id="queue"></div>
+  <section id="view-main" class="view">
+    <h2>正在播放</h2>
+    <div id="now"></div>
 
-  <h2>刚播过</h2>
+    <h2>队列</h2>
+    <div id="queue"></div>
+  </section>
+</section>
+
+<section id="view-history" class="view">
+  <header>
+    <a class="back" href="#/">‹ 返回点歌</a>
+    <h1>已播历史</h1>
+  </header>
   <div id="history"></div>
+</section>
 </main>
 
 <script>
@@ -106,14 +124,26 @@ function card(item, isNow) {
 
 function render(state) {
   $("queueCount").textContent = `剩 ${state.queue.length} 首`;
+  $("historyCount").textContent = state.history.length ? `(${state.history.length})` : "";
   $("now").innerHTML = state.current ? card(state.current, true) : `<div class="empty">（空闲中，等待点歌）</div>`;
   $("queue").innerHTML = state.queue.length
     ? state.queue.map((i) => card(i)).join("")
     : `<div class="empty">队列空空，快点歌！</div>`;
   $("history").innerHTML = state.history.length
-    ? state.history.slice(0, 5).map((i) => card(i)).join("")
+    ? state.history.map((i) => card(i)).join("")
     : `<div class="empty">还没有播过。</div>`;
 }
+
+/* Hash-based secondary view: #/history shows the played list, anything
+   else shows the main request view. */
+function applyView() {
+  const history = location.hash === "#/history";
+  $("view-main").classList.toggle("active", !history);
+  $("view-history").classList.toggle("active", history);
+  window.scrollTo(0, 0);
+}
+window.addEventListener("hashchange", applyView);
+applyView();
 
 $("f").addEventListener("submit", async (e) => {
   e.preventDefault();
