@@ -50,6 +50,13 @@
   }
   .tag.done { background: #444; color: #aaa; }
   .tag.next { background: #e0a33f; color: #2b1d00; }
+  .tag.mine { background: #2fa25c; color: #fff; }
+  .actions { display: flex; gap: 8px; margin-top: 8px; }
+  .mini {
+    font-size: 12px; font-weight: 600; padding: 5px 10px;
+    border-radius: 8px; background: #26262e; color: #eee;
+  }
+  .mini:active { background: #33333d; }
   .idx {
     color: #67718a; font-size: 12px; font-weight: 600;
     margin-right: 7px; font-variant-numeric: tabular-nums;
@@ -132,21 +139,26 @@ function label(item) {
   return `${esc(item.title)}${part ? ` <span style="color:#7ab">${part}</span>` : ""}`;
 }
 
-function card(item, { now = false, next = false, index = 0 } = {}) {
+function card(item, { now = false, next = false, index = 0, withdraw = false } = {}) {
   const part = item.page_count > 1 ? ` · P${item.page}` : "";
+  // "Mine" badge (green) marks every track this browser requested,
+  // everywhere: now playing, queue and history.
+  const mine = !!item.requester_uid && item.requester_uid === UID;
+  const mineTag = mine ? `<span class="tag mine">我点的</span>` : "";
   const tag = now
-    ? `<span class="tag">NOW</span>`
+    ? `<span class="tag">NOW</span>${mineTag}`
     : next
-      ? `<span class="tag next">NEXT</span>`
-      : item.status === "played" || item.status === "skipped"
-        ? `<span class="tag done">${item.status === "skipped" ? "跳过" : "已播"}</span>`
-        : "";
+      ? `<span class="tag next">NEXT</span>${mineTag}`
+      : `${mineTag}${item.status === "played" || item.status === "skipped"
+          ? `<span class="tag done">${item.status === "skipped" ? "跳过" : "已播"}</span>`
+          : ""}`;
   const idx = index
     ? `<span class="idx">${index}.</span>`
     : "";
   return `<div class="card ${now ? "now" : next ? "next" : ""}">
     <div class="title">${idx}${tag}${label(item)}</div>
     <div class="meta"><span>点歌人：${esc(item.requested_by)}</span><span>${item.duration_s ? fmtDur(item.duration_s) : ""}</span></div>
+    ${withdraw && mine ? `<div class="actions"><button class="mini" data-withdraw="${esc(item.id)}" title="从队列中撤回这首歌">✕ 撤回</button></div>` : ""}
   </div>`;
 }
 
@@ -174,7 +186,7 @@ function render(state) {
   $("historyCount").textContent = state.history.length ? `(${state.history.length})` : "";
   $("now").innerHTML = state.current ? card(state.current, { now: true }) : `<div class="empty">（空闲中，等待点歌）</div>`;
   $("queue").innerHTML = state.queue.length
-    ? state.queue.map((i, idx) => card(i, { next: idx === 0 })).join("")
+    ? state.queue.map((i, idx) => card(i, { next: idx === 0, withdraw: true })).join("")
     : `<div class="empty">队列空空，快点歌！</div>`;
   // History is stored newest-first on the server; display oldest-first so
   // index 1 is the first song ever played, newest at the bottom.
@@ -241,6 +253,31 @@ $("f").addEventListener("submit", async (e) => {
 });
 
 // Skip control intentionally lives only in the extension popup, not here.
+
+/* Withdraw my own queued track. Available regardless of fair mode;
+   the server enforces that only the requesting browser may withdraw. */
+document.addEventListener("click", async (e) => {
+  const id = e.target?.dataset?.withdraw;
+  if (!id) return;
+  msg.className = "msg";
+  try {
+    const res = await fetch("/api/withdraw", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id, uid: UID }),
+    });
+    const body = await res.json().catch(() => null);
+    if (res.ok && body?.ok) {
+      if (body.state) render(body.state);
+      msg.textContent = `已撤回：「${body.item.part || body.item.title}」`;
+      msg.classList.add("ok");
+    } else {
+      msg.textContent = (body && body.message) || "撤回失败";
+    }
+  } catch (err) {
+    msg.textContent = "撤回失败: " + (err.message || err);
+  }
+});
 
 async function refresh() {
   const res = await fetch("/api/state");

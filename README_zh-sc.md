@@ -15,6 +15,7 @@
 
 - FIFO 队列，展示点歌人；**空闲时提交的歌自动开始播放**（提升为正在播放，所有客户端跟随）；重启后自动恢复未播完的会话
 - 判重以归一化 ID（`bvid + 分P`）为准：正在播放/已在队列中的重复提交被拒绝（人话中文报错），播过的歌可以重复点；队列与已播历史均无容量上限
+- **随时撤回自己的点歌**：绿色「我点的」badge 标出本人点的所有歌（正在播放/队列/历史都会标），队列里自己的歌带「✕ 撤回」按钮。归属在服务端按浏览器 uid 校验、**不受公平轮唱开关影响**（撤回队列里的歌同时也会释放公平模式的名额）
 - 实时同步：所有变更（点歌/跳过/删除/调序/规则切换）通过 SSE 即时广播（实测 ~20ms），并带"回到前台立即对账 + 可见时 5 秒轮询"的双保险，规避手机后台标签冻结
 
 **点歌页**（手机）
@@ -42,7 +43,7 @@
 
 服务端 API 速览（供折腾用）：
 
-- 公共端口：`GET /`（页面）、`GET /api/state`、`GET /api/events`（SSE）、`POST /api/submit` `{input, by, uid}`、`POST /api/advance`、`POST /api/skip`
+- 公共端口：`GET /`（页面）、`GET /api/state`、`GET /api/events`（SSE）、`POST /api/submit` `{input, by, uid}`、`POST /api/withdraw` `{id, uid}`、`POST /api/advance`、`POST /api/skip`
 - 管理端口：`GET /`（控制台）、`GET /api/state`、`GET /api/events`、`GET /api/config`、`POST /api/config` `{allowQueuedDuplicates, oneSongPerGuest}`、`POST /api/skip`、`POST /api/delete` `{id}`、`POST /api/reorder` `{id, direction: up|down|top}`、`POST /api/rerequest` `{id}`
 
 ## 运行

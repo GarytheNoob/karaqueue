@@ -11,6 +11,9 @@
  *
  *   POST /api/advance     -> mark current as played, promote the next item
  *   POST /api/skip        -> mark current as skipped, promote the next item
+ *   POST /api/withdraw    -> { id, uid }; remove a queued track, but only
+ *                            if its requested_by uid matches (guests can
+ *                            only withdraw their own requests)
  *   GET  /api/events      -> SSE stream; broadcasts full state on every change
  *
  * Admin endpoints (ADMIN_PORT, default 7778; gated by ADMIN_PIN if set):
@@ -397,6 +400,26 @@ function advance(mark = "played") {
 }
 
 /**
+ * Guest-side withdrawal: remove a queued track, but only the requesting
+ * browser may withdraw its own submission (uid match). Works regardless
+ * of the fair-mode toggle. Playing tracks are out of scope: promote/skip
+ * stays with the host.
+ */
+function withdrawQueued(id, uid) {
+  const idx = state.queue.findIndex((i) => i.id === id);
+  if (idx < 0) {
+    return { missing: true, playing: state.current?.id === id };
+  }
+  const item = state.queue[idx];
+  if (!uid || item.requester_uid !== uid) return { forbidden: true };
+  state.queue.splice(idx, 1);
+  state.revision += 1;
+  saveState();
+  broadcast();
+  return { ok: true, item };
+}
+
+/**
  * Jukebox behavior: if nothing is playing but tracks are queued, promote the
  * next one. Called after each submit (and at boot) so an idle room starts
  * playing as soon as the first song arrives; extensions just follow `current`.
@@ -644,6 +667,23 @@ async function route(req, res, isAdmin = false) {
     } catch (err) {
       return sendJson(res, 400, { ok: false, message: String(err.message || err) });
     }
+  }
+
+  if (req.method === "POST" && pathname === "/api/withdraw") {
+    const body = await readJsonBody(req);
+    const result = withdrawQueued(String(body.id ?? ""), String(body.uid ?? ""));
+    if (result.forbidden) {
+      return sendJson(res, 403, { ok: false, message: "只能撤回自己点的歌" });
+    }
+    if (result.missing) {
+      return sendJson(res, 404, {
+        ok: false,
+        message: result.playing
+          ? "这首正在播放中，撤回不了——切歌请找房主"
+          : "这首歌已不在队列中（可能唱完了或刚被移出）",
+      });
+    }
+    return sendJson(res, 200, { ok: true, item: result.item, state: publicState() });
   }
 
   if (req.method === "POST" && (pathname === "/api/advance" || pathname === "/api/skip")) {

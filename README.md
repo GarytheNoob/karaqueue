@@ -15,6 +15,7 @@ A LAN karaoke queue player prototype: people submit bilibili videos (BV id / lin
 
 - FIFO queue with the requester shown; **a submission while the room is idle starts playing immediately** (promoted to "now playing", all clients follow). The session resumes automatically after a server restart.
 - Dedup by canonical ID (`bvid + part index`): resubmitting a playing/queued track is rejected with a human-readable Chinese error; re-requesting a played track is always allowed. No size caps on the queue or history.
+- **Withdraw own requests anytime**: a green "mine" badge highlights every track this browser requested (now playing / queue / history), and queued ones carry a ✕ withdraw button. Ownership is enforced server-side by the browser uid, and works regardless of the fair-mode toggle (removing the queued track also releases the guest's fair-mode slot).
 - Real-time sync: every change (submit/skip/delete/reorder/rule toggle) is broadcast instantly (~20 ms measured) to all pages over SSE, with a 5 s polling + on-refocus reconciliation fallback for frozen mobile tabs.
 
 **Request page** (phones)
@@ -42,7 +43,7 @@ A LAN karaoke queue player prototype: people submit bilibili videos (BV id / lin
 
 Server API quick reference (for tinkering):
 
-- Public port: `GET /` (page), `GET /api/state`, `GET /api/events` (SSE), `POST /api/submit` `{input, by, uid}`, `POST /api/advance`, `POST /api/skip`
+- Public port: `GET /` (page), `GET /api/state`, `GET /api/events` (SSE), `POST /api/submit` `{input, by, uid}`, `POST /api/withdraw` `{id, uid}`, `POST /api/advance`, `POST /api/skip`
 - Admin port: `GET /` (console), `GET /api/state`, `GET /api/events`, `GET /api/config`, `POST /api/config` `{allowQueuedDuplicates, oneSongPerGuest}`, `POST /api/skip`, `POST /api/delete` `{id}`, `POST /api/reorder` `{id, direction: up|down|top}`, `POST /api/rerequest` `{id}`
 
 ## Running
