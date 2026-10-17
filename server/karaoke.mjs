@@ -185,6 +185,20 @@ function advance(mark = "played") {
   return { finished: finished, current: state.current };
 }
 
+/**
+ * Jukebox behavior: if nothing is playing but tracks are queued, promote the
+ * next one. Called after each submit (and at boot) so an idle room starts
+ * playing as soon as the first song arrives; extensions just follow `current`.
+ */
+function promoteNextIfIdle() {
+  if (state.current || state.queue.length === 0) return;
+  state.current = state.queue.shift();
+  state.current.status = "playing";
+  state.revision += 1;
+  saveState();
+  broadcast();
+}
+
 /* ------------------------------------------------------------------ */
 /* HTTP plumbing                                                       */
 /* ------------------------------------------------------------------ */
@@ -303,6 +317,7 @@ async function route(req, res) {
         });
       }
       enqueue(item);
+      promoteNextIfIdle();
       return sendJson(res, 200, { ok: true, item, state: publicState() });
     } catch (err) {
       return sendJson(res, 400, { ok: false, message: String(err.message || err) });
@@ -323,6 +338,7 @@ async function route(req, res) {
 /* ------------------------------------------------------------------ */
 
 loadState();
+promoteNextIfIdle(); // resume jukebox after a restart with a non-empty queue
 http
   .createServer((req, res) => {
     route(req, res).catch((err) => {
