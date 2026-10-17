@@ -3,14 +3,22 @@
 <head>
 <meta charset="utf-8" />
 <style>
-  body { font-family: system-ui, sans-serif; width: 280px; margin: 0; padding: 12px; background: #14141a; color: #eee; }
+  /* Mirrors the card design of the song request page (server/static/index.html). */
+  body { font-family: system-ui, sans-serif; width: 300px; margin: 0; padding: 12px; background: #101014; color: #e8e8ee; }
   h1 { font-size: 14px; margin: 0 0 10px; }
-  input, button { width: 100%; box-sizing: border-box; border-radius: 8px; padding: 8px 10px; font-size: 13px; }
-  input { background: #22222a; border: 1px solid #3a3a44; color: inherit; margin-bottom: 8px; }
+  h2 { font-size: 11px; margin: 14px 0 6px; color: #9aa; letter-spacing: .05em; }
+  input, button { width: 100%; box-sizing: border-box; border-radius: 10px; padding: 8px 10px; font-size: 13px; }
+  input { background: #1c1c22; border: 1px solid #33333d; color: inherit; margin-bottom: 8px; }
   button { background: #2f6fed; border: 0; color: #fff; font-weight: 600; cursor: pointer; margin-bottom: 6px; }
   button.ghost { background: transparent; border: 1px solid #555; color: #bbb; font-weight: 400; }
   #status { font-size: 12px; color: #8f8; min-height: 15px; }
-  #now { font-size: 12px; color: #bbb; margin-top: 8px; line-height: 1.4; }
+  .card { background: #17171d; border: 1px solid #26262e; border-radius: 12px; padding: 10px 12px; }
+  .card.now { border-color: #2f6fed; }
+  .card .title { font-size: 13px; line-height: 1.4; }
+  .card .meta { font-size: 11px; color: #888; margin-top: 4px; display: flex; justify-content: space-between; }
+  .tag { font-size: 10px; background: #2f6fed; color: #fff; border-radius: 4px; padding: 1px 6px; margin-right: 6px; vertical-align: 2px; }
+  .tag.upnext { background: #444; color: #aaa; }
+  .empty { color: #666; font-size: 12px; padding: 4px 2px; }
 </style>
 </head>
 <body>
@@ -20,7 +28,9 @@
   <button id="open" class="ghost">打开 / 播放当前曲目</button>
   <button id="skip" class="ghost">跳过当前，直接播下一首</button>
   <div id="status"></div>
+  <h2>正在播放</h2>
   <div id="now"></div>
+  <h2>下一首</h2>
   <div id="next"></div>
   <script src="popup.js"></script>
 </body>

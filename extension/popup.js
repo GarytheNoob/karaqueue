@@ -1,15 +1,14 @@
-/* Popup: configure the queue server address and open the current track. */
+/* Popup: configure the queue server address, control playback, and mirror
+   the card-based track display used by the song request page. */
 const DEFAULT_SERVER = "http://127.0.0.1:7777";
-const input = document.getElementById("serverUrl");
 const status = document.getElementById("status");
-const now = document.getElementById("now");
 
 chrome.storage.sync.get({ serverUrl: DEFAULT_SERVER }).then(({ serverUrl }) => {
-  input.value = serverUrl;
+  document.getElementById("serverUrl").value = serverUrl;
 });
 
 document.getElementById("save").addEventListener("click", async () => {
-  const url = input.value.trim().replace(/\/+$/, "");
+  const url = document.getElementById("serverUrl").value.trim().replace(/\/+$/, "");
   if (!/^https?:\/\//.test(url)) {
     status.textContent = "地址需要以 http:// 开头";
     return;
@@ -41,21 +40,50 @@ document.getElementById("skip").addEventListener("click", async () => {
   await refresh();
 });
 
-// Show what is currently playing and what comes next.
+/* ------------------------------------------------------------------ */
+/* Card rendering (same design as the request page)                    */
+/* ------------------------------------------------------------------ */
+
+function esc(s) {
+  return String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+
+function fmtDur(s) {
+  if (!s) return "";
+  const m = Math.floor(s / 60), r = s % 60;
+  return `${m}:${String(r).padStart(2, "0")}`;
+}
+
+function card(item, { tag, tagClass, now }) {
+  const part = item.page_count > 1 ? ` · P${item.page}` : "";
+  return `<div class="card ${now ? "now" : ""}">
+    <div class="title"><span class="tag ${tagClass}">${tag}</span>${esc(item.title)}${part ? ` <span style="color:#7ab">· P${item.page}</span>` : ""}</div>
+    <div class="meta"><span>by ${esc(item.requested_by)}</span><span>${esc(item.uploader)}${item.duration_s ? " · " + fmtDur(item.duration_s) : ""}</span></div>
+  </div>`;
+}
+
+const empty = (text) => `<div class="empty">${text}</div>`;
+
 async function refresh() {
+  const now = document.getElementById("now");
+  const next = document.getElementById("next");
+  let state;
   try {
-    const base = (await chrome.storage.sync.get({ serverUrl: DEFAULT_SERVER })).serverUrl;
-    const res = await fetch(`${base.replace(/\/+$/, "")}/api/state`);
-    const state = await res.json();
-    now.textContent = state.current
-      ? `正在播放：${state.current.title}（P${state.current.page}）`
-      : `空闲中（队列剩 ${state.queue.length} 首；空闲时新提交的歌会自动开始播放）`;
-    const next = state.queue[0];
-    document.getElementById("next").textContent = next
-      ? `下一首：${next.title}${next.page_count > 1 ? `（P${next.page}）` : ""} — by ${next.requested_by}`
-      : state.current ? "下一首：（队列空，播完这首就收工）" : "";
+    const base = (await chrome.storage.sync.get({ serverUrl: DEFAULT_SERVER })).serverUrl.replace(/\/+$/, "");
+    state = await (await fetch(`${base}/api/state`)).json();
   } catch {
-    now.textContent = "无法连接队列服务（检查服务是否运行 / 地址是否正确）";
+    now.innerHTML = empty("无法连接队列服务（检查服务是否运行 / 地址是否正确）");
+    next.innerHTML = "";
+    return;
   }
+
+  now.innerHTML = state.current
+    ? card(state.current, { tag: "NOW", tagClass: "", now: true })
+    : empty(`空闲中（队列剩 ${state.queue.length} 首；空闲时新提交的歌会自动开始播放）`);
+
+  const upNext = state.queue[0];
+  next.innerHTML = upNext
+    ? card(upNext, { tag: "UP NEXT", tagClass: "upnext", now: false })
+    : state.current ? empty("队列空，播完这首就收工") : "";
 }
 refresh();
