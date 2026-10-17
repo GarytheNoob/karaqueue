@@ -75,6 +75,15 @@ async function parseInput(rawInput) {
   let input = String(rawInput || "").trim();
   if (!input) throw new Error("empty input");
 
+  // Mobile app share text wraps the link, e.g.
+  // "【【纯k投屏】Holiday∞Holiday - ... - 哔哩哔哩】 https://b23.tv/FRuYXW6"
+  // Pull the first URL out of arbitrary text before doing anything else.
+  const urlMatch = input.match(/https?:\/\/[^\s"'()【】]+/u);
+  if (urlMatch) {
+    // Drop any CJK/full-width junk the share text may append after the URL.
+    input = urlMatch[0].replace(/[^\x21-\x7E]+$/g, "");
+  }
+
   // b23.tv short links are redirects; follow them once to get the real URL.
   if (/b23\.tv/i.test(input)) {
     const res = await fetch(input, {
