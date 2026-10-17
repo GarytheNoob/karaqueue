@@ -1,51 +1,53 @@
 # Nikokara Player
 
-局域网点歌机原型：手机提交 BV 号/链接/B站分享文本，队列服务维护顺序，Chrome 插件驱动 bilibili 标签页自动连播。零 npm 依赖。
+A LAN karaoke queue player prototype: people submit bilibili videos (BV id / link / mobile share text) from their phones, a queue server keeps the order, and a Chrome extension drives a bilibili tab to auto-advance to the next requested track. Zero npm dependencies.
 
-## 功能现状
+> 🇨🇳 中文说明：[README_zh-sc.md](README_zh-sc.md)
 
-- **输入解析**（bilibili）：BV 号、av 号、完整网页链接、`?p=N` 分P、`b23.tv` 短链、手机 App 分享文本（`【标题】 https://b23.tv/xxx` 形式，自动提取链接）。多 P 投稿按单 P 为一首歌（分P号进曲目 ID）
-- **队列**：FIFO，展示点歌人；**空闲时提交的歌自动开始播放**（提升为正在播放，所有客户端跟随）；重启后自动恢复未播完的会话
-- **判重**：以归一化 ID（`bvid + 分P`）为准——正在播放/已在队列中的重复提交被拒绝（中文报错），播过的歌可以重复点
-- **无容量上限**：队列与已播历史均无截断
-- **点歌页**（手机）：提交表单、正在播放、队列；卡片样式区分 NOW（蓝）/ NEXT（琥珀）；"已播历史"在二级页面（`#/history`）。手机端没有跳过按钮
-- **插件**（MV3，v0.3.2）：视频播完自动切下一首；SPA 路由自动重绑播放器；autoplay 被拦截时显示"继续播放"悬浮按钮；弹窗可配置服务地址、打开当前曲目、**跳过**（立即生效）；NOW/NEXT 卡片与点歌页同款样式
+## Current features
 
-## 组成
+- **Input parsing** (bilibili): BV id, av id, full watch URL, `?p=N` multi-part (P) links, `b23.tv` short links, and mobile app share text (`【title】 https://b23.tv/xxx` — the URL is extracted automatically). Each part (P) of a multi-P submission counts as one track (part index is part of the track ID).
+- **Queue**: FIFO with requester shown; **a submission while the room is idle starts playing immediately** (promoted to "now playing", all clients follow); the session resumes automatically after a server restart.
+- **Dedup**: based on the canonical ID (`bvid + part index`) — resubmitting a track that is playing or queued is rejected (user-facing error message), while re-requesting a played track is allowed.
+- **No size caps**: neither the queue nor the play history is truncated.
+- **Request page** (mobile): submit form, now playing, and queue; card styles distinguish NOW (blue) / NEXT (amber); play history lives on a secondary page (`#/history`). No skip button on mobile — skipping is the host's job.
+- **Extension** (MV3, v0.3.2): auto-advance when a video ends; rebinds the player after SPA navigations; shows a "resume playback" overlay if autoplay is blocked; popup to configure the server address, open the current track, and **skip** (takes effect immediately); NOW/NEXT cards styled like the request page.
 
-- `server/karaoke.mjs` — 队列服务（Node 内置模块，零依赖）
-- `server/static/index.html` — 手机点歌页（无框架单文件）
-- `extension/` — Chrome 插件
+## Layout
 
-## 运行
+- `server/karaoke.mjs` — the queue server (Node built-ins only)
+- `server/static/index.html` — the single-file, framework-free request page
+- `extension/` — the Chrome extension
 
-要求 **Node ≥ 18**（内置 fetch）。
+## Running
+
+Requires **Node >= 18** (built-in fetch).
 
 ```sh
-node server/karaoke.mjs                      # 默认 0.0.0.0:7777
+node server/karaoke.mjs                      # defaults to 0.0.0.0:7777
 PORT=8080 HOST=127.0.0.1 node server/karaoke.mjs
 ```
 
-局域网内设备访问 `http://<本机局域网IP>:7777`（macOS 可用 `ipconfig getifaddr en0` 查询本机 IP）。
+Other devices on the LAN use `http://<machine-LAN-IP>:7777` (on macOS, `ipconfig getifaddr en0` shows your IP).
 
-## 安装插件（Load unpacked）
+## Installing the extension (Load unpacked)
 
-1. Chrome 打开 `chrome://extensions`，右上角开启 **开发者模式**
-2. **加载已解压的扩展程序** → 选择本仓库 `extension/` 目录
-3. 点击工具栏的 Nikokara Player 图标，确认服务地址（默认 `http://127.0.0.1:7777`；服务跑在别的机器上就改成对应 IP 并保存）
+1. Open `chrome://extensions` in Chrome and enable **Developer mode** (top right)
+2. **Load unpacked** → select this repo's `extension/` directory
+3. Click the Nikokara Player toolbar icon and confirm the server address (defaults to `http://127.0.0.1:7777`; change it if the server runs on another machine)
 
-## 使用流程
+## Usage flow
 
-1. 大屏电脑启动队列服务
-2. 大屏 Chrome 里手动打开第一个视频（或用插件弹窗"打开当前曲目"）；**若浏览器拦截自动播放，点一次右下角"继续播放"**——之后整晚不再需要交互
-3. 大家手机点歌：空闲时点歌会自动开播；一首播完插件自动切下一首
-4. 房主在插件弹窗"跳过当前"立即切歌；弹窗同时显示正在播放/下一首卡片
-5. 想重听某首歌？在点歌页"已播历史"里找到原链接再点一次提交即可
+1. Start the queue server on the big-screen machine
+2. Open the first video manually in Chrome (or use the popup's "open current track"); **if the browser blocks autoplay, tap the "resume playback" button in the bottom-right corner once** — that is the only interaction needed for the whole session
+3. Everyone requests songs from their phones: submissions while idle start playing automatically; when a track ends the extension switches to the next one
+4. The host can skip immediately via the popup's skip button; the popup also shows NOW/NEXT cards
+5. Want to hear a song again? Find it on the request page's history page and submit it once more
 
-## 注意事项 / 已知边界
+## Notes & known limitations
 
-- **关闭 B 站播放器的"自动连播"**，否则页面原生连播会和插件切歌竞争
-- 队列状态持久化在 `server/queue.json`（已 gitignore）；修改代码或遇到诡异状态时先 `pkill -f karaoke.mjs` 再重启，测试想完全干净可删除该文件
-- B 站元数据来自公开 web 接口，频繁点歌可能触发风控（原型未做节流，单房间量级基本无风险）
-- 弹窗的即时跳过依赖"打开当前曲目"触发的即时对账；其他远端变更（如未来多数派跳过）在 ≤15 秒内由 alarm 轮询同步
-- 暂不支持 YouTube / niconico（resolver 遇到会报错提示，属预期行为；架构已预留 source 适配层）
+- **Turn off bilibili's native "auto-play next" toggle**, otherwise the page's own autoplay fights with the extension's switching
+- Queue state persists in `server/queue.json` (gitignored); when troubleshooting weird state, `pkill -f karaoke.mjs` and restart, or delete the file for a clean slate
+- Video metadata comes from bilibili's public web API; heavy request rates may trigger rate limiting (no throttling in the prototype — fine for a single-room workload)
+- Popup skip takes effect immediately via on-demand reconciliation; other remote changes sync within ~15 s via an alarm-based poll
+- YouTube / niconico are not supported yet (the resolver reports an error; the source-adapter layer for them is planned)
