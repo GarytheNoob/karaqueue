@@ -25,10 +25,6 @@
     padding: 12px; font-size: 16px; font-weight: 600; cursor: pointer;
   }
   button:disabled { opacity: .5; }
-  button.skip {
-    background: transparent; border: 1px solid #555; color: #bbb;
-    font-size: 12px; padding: 4px 10px; font-weight: 400;
-  }
   .msg { min-height: 20px; font-size: 13px; color: #f66; margin: 2px 0; }
   .msg.ok { color: #5d5; }
   .card {
@@ -101,10 +97,9 @@ function label(item) {
 
 function card(item, isNow) {
   const part = item.page_count > 1 ? ` · P${item.page}` : "";
-  const skip = isNow ? ` <button class="skip" data-skip="1">跳过</button>` : "";
   const tag = isNow ? `<span class="tag">NOW</span>` : item.status === "played" || item.status === "skipped" ? `<span class="tag done">${item.status === "skipped" ? "跳过" : "已播"}</span>` : "";
   return `<div class="card ${isNow ? "now" : ""}">
-    <div class="title">${tag}${label(item)}${skip}</div>
+    <div class="title">${tag}${label(item)}</div>
     <div class="meta"><span>by ${esc(item.requested_by)}</span><span>${esc(item.uploader)}${item.duration_s ? " · " + fmtDur(item.duration_s) : ""}</span></div>
   </div>`;
 }
@@ -148,11 +143,7 @@ $("f").addEventListener("submit", async (e) => {
   }
 });
 
-// Skip button (delegated; only rendered on the NOW card).
-document.addEventListener("click", (e) => {
-  if (!e.target.dataset.skip) return;
-  fetch("/api/skip", { method: "POST" }).catch(console.error);
-});
+// Skip control intentionally lives only in the extension popup, not here.
 
 async function refresh() {
   const res = await fetch("/api/state");
