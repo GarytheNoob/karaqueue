@@ -31,7 +31,6 @@ const BROWSER_UA =
 
 /** Tracks are keys by `${platform}:${video_id}:p${page}`. */
 const state = { current: null, queue: [], history: [], revision: 0 };
-const HISTORY_TRACE_LENGTH = 20; // items kept in memory / dedup window
 const sseClients = new Set();
 
 /* ------------------------------------------------------------------ */
@@ -177,7 +176,6 @@ function advance(mark = "played") {
   const finished = state.current ? { ...state.current, status: mark, finished_at: new Date().toISOString() } : null;
   if (finished) {
     state.history.unshift(finished);
-    state.history = state.history.slice(0, HISTORY_TRACE_LENGTH);
   }
   state.current = state.queue.shift() ?? null;
   if (state.current) state.current.status = "playing";
