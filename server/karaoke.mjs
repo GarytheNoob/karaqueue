@@ -175,7 +175,8 @@ const PAGE_RE = /[?&]p=(\d+)/;
 
 /**
  * Parse a user submission (BV id, av id, full URL, b23.tv short link)
- * into { bvid?, aid?, page }.
+ * into { platform, bvid?, aid?, page }. The platform tag lets later
+ * steps dispatch to a per-source resolver.
  */
 async function parseInput(rawInput) {
   let input = String(rawInput || "").trim();
@@ -204,6 +205,10 @@ async function parseInput(rawInput) {
     }
   }
 
+  // Do not canonicalize pasted URLs before per-platform dispatch; other
+  // platforms get their own branch here and keep their original URL.
+
+  // --- bilibili ---------------------------------------------------------
   // Expand any pasted URL so ids inside query strings are visible.
   if (/^https?:\/\//.test(input)) {
     try {
@@ -218,9 +223,9 @@ async function parseInput(rawInput) {
   const page = pageMatch ? Number(pageMatch[1]) : 1;
 
   const bv = input.match(BV_RE);
-  if (bv) return { bvid: bv[1], page };
+  if (bv) return { platform: "bilibili", bvid: bv[1], page };
   const aid = input.match(AID_RE);
-  if (aid) return { aid: aid[1], page };
+  if (aid) return { platform: "bilibili", aid: aid[1], page };
 
   throw new Error("no bilibili video id found in input");
 }
@@ -356,6 +361,20 @@ async function resolveView(parsed) {
       warning: "B站接口暂时不可用（风控或网络），已按纯链接加入队列，标题信息暂时缺失",
     };
   }
+}
+
+/**
+ * Resolve parsed input to a finished queue item. Per-platform dispatch
+ * lives here so the route handler stays source-agnostic.
+ * Returns { item, warning } (warning present on degraded resolution).
+ */
+async function resolveItem(parsed, requestedBy) {
+  if (parsed.platform !== "bilibili") {
+    throw new Error(`unsupported platform: ${parsed.platform}`);
+  }
+  const { view, warning } = await resolveView(parsed);
+  const item = view ? makeItem(view, parsed.page, requestedBy) : makeFallbackItem(parsed, parsed.page, requestedBy);
+  return { item, warning };
 }
 
 /* ------------------------------------------------------------------ */
@@ -637,10 +656,9 @@ async function route(req, res, isAdmin = false) {
     }
     try {
       const parsed = await parseInput(body.input);
-      const { view, warning } = await resolveView(parsed);
       // Truly missing videos (bilibili code -404) reject; infra failures
       // degrade to a link-only item so the room keeps playing.
-      const item = view ? makeItem(view, parsed.page, body.by) : makeFallbackItem(parsed, parsed.page, body.by);
+      const { item, warning } = await resolveItem(parsed, body.by);
       // Bind the browser cookie uid so fair-mode lockout keeps working
       // even if the guest changes their nickname later.
       item.requester_uid = String(body.uid ?? "").slice(0, 80) || null;
