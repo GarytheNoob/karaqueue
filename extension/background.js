@@ -33,14 +33,30 @@ async function api(path, options = {}) {
   return res.json();
 }
 
-/** Extract `${bvid}:p${page}` identity from a bilibili watch URL. */
+/** Extract the server's track id from a watch URL (bilibili + youtube). */
 function trackIdentity(url) {
   try {
     const u = new URL(url);
     const bv = u.pathname.match(/\/video\/(BV[0-9A-Za-z]{10}|av\d+)/i);
-    if (!bv) return null;
-    const p = Number(u.searchParams.get("p") || 1);
-    return `${bv[1]}:p${p}`;
+    if (bv) {
+      const p = Number(u.searchParams.get("p") || 1);
+      return `${bv[1]}:p${p}`;
+    }
+    // YouTube: watch?v=, youtu.be/<id> and shorts all map to <id>:p1,
+    // matching the ids the server builds (host is checked so random
+    // sites carrying a `v=` query are not mistaken for tracks).
+    const host = u.hostname.replace(/^www\./, "");
+    if (host === "youtu.be") {
+      const id = u.pathname.split("/")[1] ?? "";
+      return /^[A-Za-z0-9_-]{11}$/.test(id) ? `${id}:p1` : null;
+    }
+    if (host === "youtube.com" || host === "m.youtube.com") {
+      const id =
+        u.searchParams.get("v") ||
+        u.pathname.match(/\/(?:shorts|embed|live)\/([A-Za-z0-9_-]{11})/)?.[1];
+      return id ? `${id}:p1` : null;
+    }
+    return null;
   } catch {
     return null;
   }
@@ -59,7 +75,14 @@ async function advance(mark = "played") {
 /* ------------------------------------------------------------------ */
 
 async function findPlayerTab() {
-  const tabs = await chrome.tabs.query({ url: "*://*.bilibili.com/video/*" });
+  const tabs = await chrome.tabs.query({
+    url: [
+      "*://*.bilibili.com/video/*",
+      "*://*.youtube.com/watch*",
+      "*://*.youtube.com/shorts*",
+      "*://youtu.be/*",
+    ],
+  });
   return tabs[0] ?? null;
 }
 

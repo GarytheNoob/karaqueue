@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "KaraQueue",
-  "version": "0.3.3",
+  "version": "0.4.0",
   "description": "Drives a bilibili tab from a local karaoke queue server: auto-advance to the next requested video.",
   "permissions": ["tabs", "alarms", "storage"],
   "host_permissions": ["http://*/*"],
@@ -13,6 +13,11 @@
   "content_scripts": [
     {
       "matches": ["*://*.bilibili.com/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["*://*.youtube.com/*", "*://youtu.be/*"],
       "js": ["content.js"],
       "run_at": "document_idle"
     }

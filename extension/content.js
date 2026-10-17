@@ -1,10 +1,10 @@
 /**
- * KaraQueue - content script (bilibili pages).
+ * KaraQueue - content script (bilibili + youtube video pages).
  *
  * Job is deliberately tiny:
  *  1. Find the <video> element and report its `ended` event to the
  *     background worker, which advances the shared queue.
- *  2. Re-bind after SPA navigations (bilibili swaps the video element).
+ *  2. Re-bind after SPA navigations (both players swap the element).
  *  3. Try to auto-play after navigation; if the browser blocks it, show a
  *     small tap-to-resume overlay so the operator notices.
  *
@@ -12,7 +12,13 @@
  * the server's current item changes (alarm-based reconciliation).
  */
 (() => {
-  if (!location.pathname.startsWith("/video/")) return;
+  const host = location.hostname;
+  const isBilibili =
+    /(^|\.)bilibili\.com$/.test(host) && location.pathname.startsWith("/video/");
+  const isYouTube =
+    (/youtube\.com$/.test(host) && (location.pathname === "/watch" || location.pathname.startsWith("/shorts/"))) ||
+    host === "youtu.be";
+  if (!isBilibili && !isYouTube) return;
   const log = (...a) => console.debug("[karaqueue]", ...a);
 
   let boundVideo = null;
@@ -23,7 +29,9 @@
   }
 
   function bind() {
-    const video = document.querySelector("video");
+    // On youtube prefer the main player's element; generic fallback for
+    // anything else (bilibili has exactly one <video> too).
+    const video = document.querySelector("#movie_player video") ?? document.querySelector("video");
     if (!video || video === boundVideo) return;
     boundVideo = video;
     video.addEventListener("ended", onEnded);
