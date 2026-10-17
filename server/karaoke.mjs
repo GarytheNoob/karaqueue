@@ -31,7 +31,10 @@
  */
 import http from "node:http";
 import fs from "node:fs";
+import net from "node:net";
+import tls from "node:tls";
 import path from "node:path";
+import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
 const PORT = Number(process.env.PORT || 7777);
@@ -178,6 +181,175 @@ function saveState() {
   const tmp = `${DATA_FILE}.tmp`;
   fs.writeFileSync(tmp, JSON.stringify(state, null, 2));
   fs.renameSync(tmp, DATA_FILE);
+}
+
+/* ------------------------------------------------------------------ */
+/* Outbound proxy (for platforms the LAN cannot reach directly)         */
+/* ------------------------------------------------------------------ */
+
+// Node's global fetch ignores OS proxy settings, so a network that needs
+// a proxy to reach YouTube gets plain connection failures. We pick up the
+// proxy once at startup (KARAQUEUE_PROXY / HTTPS_PROXY env, or the macOS
+// system proxy) and tunnel the requests that need it through an
+// HTTP CONNECT + TLS pair built on node:net / node:tls - no dependencies.
+// Local and LAN targets (test mock seams, the LAN server) always bypass
+// the tunnel, and bilibili requests stay direct on purpose.
+
+let activeProxy = null; // { host, port, source } | null
+
+function loadProxyConfig() {
+  const fromEnv =
+    process.env.KARAQUEUE_PROXY ||
+    process.env.HTTPS_PROXY ||
+    process.env.https_proxy ||
+    process.env.HTTP_PROXY ||
+    process.env.http_proxy;
+  if (fromEnv) {
+    activeProxy = parseProxy(fromEnv, "环境变量 HTTPS_PROXY/KARAQUEUE_PROXY");
+  }
+  if (!activeProxy && process.platform === "darwin") {
+    activeProxy = macOSSystemProxy();
+  }
+  if (activeProxy) {
+    console.log(`[karaqueue] 跨网请求走代理 ${activeProxy.host}:${activeProxy.port}（${activeProxy.source}），B 站仍走直连`);
+  }
+}
+
+function parseProxy(str, source) {
+  const s = String(str || "").trim();
+  const url = s.match(/^(?:https?|socks[45]h?):\/\/([^/:@\s]+):(\d+)/i);
+  if (url) return { host: url[1], port: Number(url[2]), source };
+  const hostPort = s.match(/^([^/:@\s]+):(\d+)$/);
+  if (hostPort) return { host: hostPort[1], port: Number(hostPort[2]), source };
+  return null;
+}
+
+/** macOS "system proxy" lives in scutil, not in env vars. */
+function macOSSystemProxy() {
+  try {
+    const out = execFileSync("scutil", ["--proxy"], { encoding: "utf8", timeout: 3000 });
+    const pick = (key) => out.match(new RegExp(`${key}\\s*:\\s*(\\S+)`))?.[1];
+    // An HTTPS proxy entry answers plain HTTP CONNECT, so prefer it.
+    for (const [enableKey, hostKey, portKey] of [
+      ["HTTPSEnable", "HTTPSProxy", "HTTPSPort"],
+      ["HTTPEnable", "HTTPProxy", "HTTPPort"],
+    ]) {
+      if (Number(pick(enableKey)) === 1 && pick(hostKey)) {
+        return { host: pick(hostKey), port: Number(pick(portKey)) || 8080, source: "macOS 系统代理" };
+      }
+    }
+    if (Number(pick("SOCKSEnable")) === 1) {
+      console.log("[karaqueue] 系统只开了 SOCKS 代理（暂不支持），跨网请求走直连");
+    }
+  } catch {
+    /* headless or no scutil: stay direct */
+  }
+  return null;
+}
+
+/** Only public hosts use the proxy; localhost / LAN (mock seams too)
+ * always go direct so the integration test seam keeps working. */
+function shouldProxy(url) {
+  if (!activeProxy) return false;
+  const host = new URL(url).hostname;
+  if (/^(localhost|127\.|0\.|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/.test(host)) return false;
+  return true;
+}
+
+/** One HTTPS GET through the current HTTP proxy: CONNECT the tunnel, wrap
+ * the socket in TLS, send a plain GET with Connection: close, read one
+ * full response and parse it. */
+function httpsGetViaProxy(urlString, headers, timeoutMs) {
+  return new Promise((resolve, reject) => {
+    const u = new URL(urlString);
+    const target = `${u.hostname}:${u.port || 443}`;
+    const sock = net.connect({ host: activeProxy.host, port: activeProxy.port }, () => {
+      // Ask the proxy to punch the tunnel first.
+      sock.write(`CONNECT ${target} HTTP/1.1\r\nHost: ${target}\r\n\r\n`);
+    });
+    let tlsSocket = null;
+    let timer = null;
+    const fail = (message) => {
+      clearTimeout(timer);
+      sock.destroy();
+      tlsSocket?.destroy();
+      reject(new MetaApiError(`走代理请求失败：${message}`, "proxy"));
+    };
+    timer = setTimeout(() => fail("超时"), timeoutMs);
+    sock.on("error", (e) => fail(e.message));
+
+    // Stage 1: the proxy's answer to our CONNECT.
+    let head = "";
+    sock.on("data", function onData(chunk) {
+      head += chunk.toString("latin1");
+      if (!head.includes("\r\n\r\n")) return;
+      sock.off("data", onData);
+      const status = head.slice(0, head.indexOf("\r\n"));
+      if (!/^HTTP\/1\.[01] 200/.test(status)) return fail(`CONNECT 被拒：${status}`);
+
+      // Stage 2: TLS inside the tunnel, then a plain GET.
+      tlsSocket = tls.connect({ socket: sock, servername: u.hostname }, () => {
+        const lines = Object.entries({ Host: u.hostname, Connection: "close", ...headers })
+          .map(([k, v]) => `${k}: ${v}`);
+        tlsSocket.write(`GET ${u.pathname}${u.search} HTTP/1.1\r\n${lines.join("\r\n")}\r\n\r\n`);
+      });
+      tlsSocket.on("error", (e) => fail(`TLS/请求失败：${e.message}`));
+      const chunks = [];
+      tlsSocket.on("data", (c) => chunks.push(c));
+      tlsSocket.on("close", () => {
+        clearTimeout(timer);
+        try {
+          resolve(parseHttpMessage(Buffer.concat(chunks)));
+        } catch (e) {
+          reject(e instanceof MetaApiError ? e : new MetaApiError(`代理响应异常：${e.message}`, "proxy"));
+        }
+      });
+    });
+  });
+}
+
+/** Split an HTTP/1.1 response into status/content-type/body, de-chunking
+ * when needed. Body bytes stay raw UTF-8 (titles carry CJK/emoji). */
+function parseHttpMessage(buf) {
+  const raw = buf.toString("latin1");
+  const sep = raw.indexOf("\r\n\r\n");
+  if (sep < 0) throw new MetaApiError("代理响应不完整", "proxy");
+  const headLines = raw.slice(0, sep).split("\r\n");
+  const headers = {};
+  for (const line of headLines.slice(1)) {
+    const i = line.indexOf(":");
+    if (i > 0) headers[line.slice(0, i).trim().toLowerCase()] = line.slice(i + 1).trim();
+  }
+  let body = buf.subarray(sep + 4);
+  if ((headers["transfer-encoding"] || "").includes("chunked")) body = deChunk(body);
+  return {
+    status: Number(headLines[0].split(" ")[1]) || 0,
+    contentType: headers["content-type"] ?? "",
+    text: body.toString("utf8"),
+  };
+}
+
+/** Collapse chunked transfer coding back to raw body bytes. */
+function deChunk(body) {
+  const out = [];
+  let i = 0;
+  while (i < body.length) {
+    const lineEnd = body.indexOf("\r\n", i);
+    if (lineEnd < 0) break;
+    const size = parseInt(body.subarray(i, lineEnd).toString("latin1").split(";")[0], 16);
+    if (!Number.isFinite(size) || size === 0) break;
+    out.push(body.subarray(lineEnd + 2, Math.min(lineEnd + 2 + size, body.length)));
+    i = lineEnd + 2 + size + 2; // past the chunk data and its closing CRLF
+  }
+  return Buffer.concat(out);
+}
+
+/** GET one URL. Public hosts tunnel through the proxy when there is one;
+ * localhost and LAN targets always use plain fetch. */
+async function httpGet(url, headers, timeoutMs) {
+  if (shouldProxy(url)) return httpsGetViaProxy(url, headers, timeoutMs);
+  const res = await fetch(url, { headers, signal: AbortSignal.timeout(timeoutMs) });
+  return { status: res.status, contentType: res.headers.get("content-type") ?? "", text: await res.text() };
 }
 
 /* ------------------------------------------------------------------ */
@@ -395,26 +567,25 @@ async function resolveView(parsed) {
  */
 async function fetchYouTubeMeta(videoId) {
   const target = encodeURIComponent(`https://www.youtube.com/watch?v=${videoId}`);
-  const res = await fetch(`${OEMBED_API}?format=json&url=${target}`, {
-    headers: { "User-Agent": BROWSER_UA, Accept: "application/json" },
-    signal: AbortSignal.timeout(8000),
-  });
+  const out = await httpGet(
+    `${OEMBED_API}?format=json&url=${target}`,
+    { "User-Agent": BROWSER_UA, Accept: "application/json" },
+    12000,
+  );
 
-  if (!res.ok) {
+  if (out.status !== 200) {
     const hints = {
       401: "视频在 YouTube 上锁定元数据（私密或不允许嵌入）",
       403: "YouTube 拒绝访问（HTTP 403）",
       404: "视频在 YouTube 上不存在或已删除（404）",
     };
-    throw new MetaApiError(hints[res.status] ?? `YouTube 接口异常（HTTP ${res.status}）`, res.status);
+    throw new MetaApiError(hints[out.status] ?? `YouTube 接口异常（HTTP ${out.status}）`, out.status);
   }
 
-  const contentType = res.headers.get("content-type") || "";
-  const text = await res.text();
-  if (!contentType.includes("json") || text.trimStart().startsWith("<")) {
-    throw new MetaApiError(`YouTube 返回了网页而不是 JSON（HTTP ${res.status}）`, res.status);
+  if (!out.contentType.includes("json") || out.text.trimStart().startsWith("<")) {
+    throw new MetaApiError(`YouTube 返回了网页而不是 JSON（HTTP ${out.status}）`, out.status);
   }
-  return JSON.parse(text);
+  return JSON.parse(out.text);
 }
 
 /**
@@ -435,6 +606,7 @@ async function resolveYouTubeMeta(videoId) {
     rememberYouTubeMeta(videoId, meta);
     return { meta, warning: null };
   } catch (err) {
+    console.warn(`[karaqueue] YouTube 元数据获取失败（${videoId}）：`, err.message);
     // The video itself is gone: reject the submission outright.
     if (err instanceof MetaApiError && err.code === 404) throw err;
 
@@ -906,6 +1078,10 @@ const adminHandler = (req, res) => {
     sendJson(res, 500, { ok: false, message: "internal error" });
   });
 };
+
+// Discover the outbound proxy (env or macOS system proxy) before the
+// first metadata request can need it.
+loadProxyConfig();
 
 http
   .createServer(requestHandler)
