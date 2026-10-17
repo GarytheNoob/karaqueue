@@ -6,8 +6,9 @@
  *    (covers remote skip/advance triggered from the phone UI). One tab is
  *    remembered and reused across reconciles; new tabs are only created
  *    when no candidate exists at all.
- *  - On VIDEO_ENDED (from the content script), tell the server to advance
- *    and navigate the tab to the next track.
+ *  - On VIDEO_ENDED (from the content script), verify the report against
+ *    the server's current item, advance the queue, navigate the tab and
+ *    ack the sender (which retries until it gets the ack).
  *  - OPEN_CURRENT (from the popup) opens or points a tab at the current item.
  */
 const DEFAULT_SERVER = "http://127.0.0.1:7777";
@@ -157,28 +158,57 @@ async function reconcile(preferredTabId) {
 /* Event wiring                                                        */
 /* ------------------------------------------------------------------ */
 
-chrome.runtime.onMessage.addListener((msg, sender) => {
-  if (msg?.type === "VIDEO_ENDED") handleEnded(sender.tab?.id);
+chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+  if (msg?.type === "VIDEO_ENDED") {
+    handleEnded(msg, sender.tab?.id)
+      .then((res) => sendResponse(res ?? { ok: true }))
+      .catch((e) => {
+        console.error("[karaqueue] ended hand-off failed:", e);
+        sendResponse({ ok: false, error: String(e?.message ?? e) });
+      });
+    return true; // keep the channel open for the async ack
+  }
   if (msg?.type === "OPEN_CURRENT") reconcile(null);
-  // No synchronous response is needed.
   return false;
 });
 
-async function handleEnded(tabId) {
-  // Debounce: the player may fire `ended` more than once.
+/**
+ * The player finished a track. Verify the report before advancing: a
+ * duplicate or stale report (retry after a lost ack, a second tab, the
+ * player's own autonav) must not skip the queue. Then point the
+ * reporting tab at the promoted track and ack the content script, which
+ * retries until confirmed.
+ */
+async function handleEnded(msg, tabId) {
+  const { current } = await getState();
+  // The reporting tab says which URL it is on; a mismatch means this
+  // report is old or foreign and the queue already moved on.
+  const reported = msg.href ? (trackIdentity(msg.href) ?? null) : null;
+  if (reported && current && reported !== current.id) {
+    console.log(`[karaqueue] ignoring stale ended report for ${reported}; current is ${current.id}`);
+    return { ok: true, current: current.id };
+  }
+
   const now = Date.now();
-  if (now - lastAdvanceAt < ADVANCE_DEBOUNCE_MS) return;
+  if (now - lastAdvanceAt < ADVANCE_DEBOUNCE_MS) {
+    console.log(`[karaqueue] advance debounced, treating ${reported ?? "(unknown track)"} as handled`);
+    return { ok: true, current: current?.id ?? null };
+  }
   lastAdvanceAt = now;
 
   const result = await advance("played");
   const next = result.current;
-  if (!next || !tabId) return;
+  console.log(`[karaqueue] advanced: ${result.finished?.id ?? "(none)"} -> ${next?.id ?? "(now idle)"}`);
+  if (!next || !tabId) return { ok: true, current: next?.id ?? null };
 
   const tab = await chrome.tabs.get(tabId).catch(() => null);
-  // Only navigate when the finished tab differs from the next track
-  // (identical BV+P means someone replayed the same track).
-  if (!tab || trackIdentity(tab.url) === next.id) return;
+  if (tab?.url && trackIdentity(tab.url) === next.id) {
+    console.log(`[karaqueue] tab ${tabId} already on ${next.id}`);
+    return { ok: true, current: next.id };
+  }
   await chrome.tabs.update(tabId, { url: next.web_url });
+  console.log(`[karaqueue] navigated tab ${tabId} to ${next.id}`);
+  return { ok: true, current: next.id };
 }
 
 // Periodic reconciliation also catches skips issued from the phone UI.

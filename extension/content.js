@@ -23,9 +23,48 @@
 
   let boundVideo = null;
 
+  /**
+   * Tell the worker a video finished and wait for its ack. The worker
+   * verifies the report against the server's current item, so retries
+   * are safe. Returns true once the hand-off is confirmed.
+   */
+  async function reportEnded() {
+    try {
+      const res = await chrome.runtime.sendMessage({ type: "VIDEO_ENDED", href: location.href });
+      if (res?.ok) {
+        log("advance acked; server current:", res.current ?? "(idle)");
+        return true;
+      }
+      log("advance not acked:", res);
+    } catch (e) {
+      log("sendMessage failed", e);
+    }
+    return false;
+  }
+
   function onEnded() {
     log("video ended -> requesting next track");
-    chrome.runtime.sendMessage({ type: "VIDEO_ENDED" }).catch((e) => log("sendMessage failed", e));
+    reportEnded().then((acked) => {
+      if (acked) return;
+      // Without the ack the tab would sit on the ended screen and the
+      // alarm reconcile would later flip it BACK to the stale track.
+      // Retry until confirmed - on success the tab navigates away,
+      // which ends this loop with it.
+      let tries = 0;
+      const timer = setInterval(async () => {
+        tries += 1;
+        if (!(document.querySelector("#movie_player video") ?? document.querySelector("video"))) {
+          clearInterval(timer); // navigating away tears this document down anyway
+          return;
+        }
+        if (await reportEnded()) {
+          clearInterval(timer);
+        } else if (tries >= 5) {
+          clearInterval(timer);
+          log("gave up retrying the advance after", tries, "attempts");
+        }
+      }, 4000);
+    });
   }
 
   function bind() {
