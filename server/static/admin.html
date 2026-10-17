@@ -40,6 +40,7 @@
   .actions { margin-top: 8px; display: flex; gap: 6px; }
   .bar { display: flex; gap: 8px; align-items: center; }
   .configbox { background: #17171d; border: 1px solid #26262e; border-radius: 12px; padding: 12px; font-size: 14px; }
+  .configbox + .configbox { margin-top: 10px; }
   .configbox input { width: 18px; height: 18px; accent-color: #2f6fed; }
   .configbox .head { display: flex; gap: 10px; align-items: center; }
   .configbox .desc { color: #778; font-size: 12px; margin-top: 6px; line-height: 1.5; }
@@ -62,7 +63,7 @@
       <input type="checkbox" id="allowQueuedDuplicates" />
       <label for="allowQueuedDuplicates">允许队列中重复点同一首歌</label>
     </div>
-    <div class="desc">关闭：同一首歌重复提交会被拒绝（正在播放/已在队列中）。开启：同一首歌可以在排队里出现多次。</div>
+    <div class="desc">关闭：同一首歌重复提交会被拒绝（正在播放/已在队列中）。<br />开启：同一首歌可以在排队里出现多次。</div>
   </div>
   <div class="configbox">
     <div class="head">
