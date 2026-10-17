@@ -88,6 +88,7 @@ Environment variables:
 - `HOST`: bind address
 - `ADMIN_PORT`: admin console port, default 7778
 - `KARAQUEUE_VIEW_API` and `KARAQUEUE_SPI_API`: override the bilibili endpoints for testing; `KARAQUEUE_OEMBED_API` overrides the YouTube one the same way
+- `KARAQUEUE_PROXY`: forces the proxy for cross-network requests, as `host:port` or `http://host:port`. When unset, the server reads the `HTTPS_PROXY` environment variable, and on macOS falls back to the system proxy (via `scutil --proxy`). Only public hosts use the proxy; localhost and LAN targets always connect directly, and bilibili never does.
 
 ## Installing the Extension
 
@@ -107,6 +108,8 @@ Environment variables:
 
 - `TypeError: Failed to fetch` in the popup: nothing answered at the configured address. Check that the server runs on the host machine (`node server/karaoke.mjs`) and that the address is reachable. Open `http://<host-ip>:7777/api/state` in a browser; a JSON blob confirms the server is up.
 - `Unexpected token '<', "<!DOCTYPE "... is not valid JSON`: the configured address returned an HTML page instead of KaraQueue's JSON. A missing `:7777` port is almost always the cause, which sends the request to another web service on port 80 such as a router admin page. The address must look like `http://192.168.1.5:7777`.
+- A YouTube entry stays "metadata missing" and always queues link-only: the server cannot reach youtube.com directly and found no usable proxy. Turn on the macOS system proxy (HTTP mode, not SOCKS-only) or set `KARAQUEUE_PROXY=127.0.0.1:7890` with your proxy's port, then restart the server. The startup log line names the proxy it found.
+- The big screen keeps opening new tabs: the extension on the big screen predates the tab-reuse fix. Reload the extension in `chrome://extensions` and it will drive a single remembered tab.
 - Guests do not need the extension. It only drives the big-screen browser; phones request songs at `http://<host-ip>:7777`.
 - A page looks stale after a skip or another change: mobile browsers freeze background tabs and drop the SSE connection. Each page re-syncs on refocus and polls every 5 seconds while visible, so bring the tab back to the foreground.
 

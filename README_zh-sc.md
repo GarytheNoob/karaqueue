@@ -89,6 +89,7 @@ PORT=8080 HOST=127.0.0.1 node server/karaoke.mjs
 - `HOST`：绑定地址
 - `ADMIN_PORT`：管理后台端口，默认 7778
 - `KARAQUEUE_VIEW_API`、`KARAQUEUE_SPI_API`：覆盖 B 站接口地址，测试用；`KARAQUEUE_OEMBED_API` 同理覆盖 YouTube 接口
+- `KARAQUEUE_PROXY`：跨网请求强制走这个代理，写法 `host:port` 或 `http://host:port`。不设时先读 `HTTPS_PROXY` 环境变量，macOS 再退回系统代理（`scutil --proxy` 自动发现）。只有公网地址走代理；本机和局域网目标一律直连，B 站从不走代理。
 
 ## 安装插件
 
@@ -108,6 +109,8 @@ PORT=8080 HOST=127.0.0.1 node server/karaoke.mjs
 
 - 弹窗报 `TypeError: Failed to fetch`：配置的地址没有应答。先确认服务在大屏机子上跑着（`node server/karaoke.mjs`），再确认地址可达。用浏览器打开 `http://<大屏 IP>:7777/api/state`，能看到一段 JSON 就说明服务正常。
 - 弹窗报 `Unexpected token '<', "<!DOCTYPE "... is not valid JSON`：配置的地址返回的是网页，不是 KaraQueue 的 JSON。基本都是漏了 `:7777`，请求打到了 80 端口上的其他服务，比如路由器管理页。地址要写成 `http://192.168.1.5:7777` 这种形式。
+- YouTube 条目一直“元数据未获取”、总是纯链接入队：服务器直连不上 youtube.com，也没找到可用代理。打开 macOS 系统代理（HTTP 模式，只开 SOCKS 不算），或设置 `KARAQUEUE_PROXY=127.0.0.1:7890`（端口填代理的），然后重启服务端。启动日志会写它发现了哪个代理。
+- 大屏不停开新标签页：大屏上的插件是旧版。到 `chrome://extensions` 重载插件，之后只会复用记住的那一个标签页。
 - 客人不需要装插件。插件只驱动大屏浏览器，手机点歌直接访问 `http://<大屏 IP>:7777`。
 - 页面在跳过等操作后看起来没跟上：手机浏览器会冻结后台标签，也会掐断 SSE 连接。页面回到前台会立刻对账，可见期间每 5 秒轮询兜底。把标签切回前台就行。
 
