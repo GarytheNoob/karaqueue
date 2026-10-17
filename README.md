@@ -1,6 +1,6 @@
 # Nikokara Player
 
-局域网点歌机原型：手机提交 BV 号/链接，队列服务维护顺序，Chrome 插件驱动 bilibili 标签页自动连播。
+局域网点歌机原型：手机提交 BV 号/链接/分享文本，队列服务维护顺序，Chrome 插件驱动 bilibili 标签页自动连播。
 
 设计与背景调研见 [PROPOSAL.md](PROPOSAL.md)。
 
