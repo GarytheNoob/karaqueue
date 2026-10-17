@@ -443,6 +443,36 @@ function setConfig(patch) {
   return state.config;
 }
 
+/**
+ * Re-request a track from the play history (admin "play it again"):
+ * copies the stored item into the queue with a fresh timestamp and
+ * requester, running the same duplicate rules as a fresh submission.
+ */
+function reRequest(id, by) {
+  const src = state.history.find((h) => h.id === id);
+  if (!src) return { ok: false, notFound: true };
+  const item = {
+    ...src,
+    requested_by: by || "admin",
+    requested_at: new Date().toISOString(),
+  };
+  delete item.status;
+  delete item.finished_at;
+  const dup = findInQueue(item);
+  if (dup) {
+    const where = dup.id === state.current?.id ? "正在播放" : "已在队列中";
+    return { ok: false, dupMessage: `点歌失败：「${item.part || item.title}」（P${item.page}）${where}` };
+  }
+  state.queue.push(item);
+  state.revision += 1;
+  saveState();
+  broadcast();
+  // Same jukebox semantics as /api/submit: an idle room starts playing
+  // the re-requested track immediately.
+  promoteNextIfIdle();
+  return { ok: true, item };
+}
+
 /* ------------------------------------------------------------------ */
 /* HTTP plumbing                                                       */
 /* ------------------------------------------------------------------ */
@@ -650,6 +680,18 @@ async function routeAdmin(req, res, url, pathname) {
     }
     const result = reorderQueued(String(body.id ?? ""), direction);
     return sendJson(res, result.ok ? 200 : 404, result);
+  }
+
+  if (req.method === "POST" && pathname === "/api/rerequest") {
+    const body = await readJsonBody(req);
+    const result = reRequest(String(body.id ?? ""), body.by);
+    if (result.notFound) {
+      return sendJson(res, 404, { ok: false, message: `id ${body.id} is not in the play history` });
+    }
+    if (result.dupMessage) {
+      return sendJson(res, 409, { ok: false, message: result.dupMessage });
+    }
+    return sendJson(res, 200, { ok: true, item: result.item });
   }
 
   res.writeHead(404, { "Access-Control-Allow-Origin": "*" });

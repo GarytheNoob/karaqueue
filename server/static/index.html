@@ -212,6 +212,17 @@ async function refresh() {
 refresh();
 const es = new EventSource("/api/events");
 es.addEventListener("state", (e) => render(JSON.parse(e.data)));
+
+/* Mobile browsers freeze background tabs and may drop the SSE stream
+   without notice (iOS Safari does not always reconnect). As a fallback,
+   re-fetch the state whenever the tab becomes visible again, and keep a
+   light poll running while the page is visible. */
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible") refresh().catch(() => {});
+});
+setInterval(() => {
+  if (document.visibilityState === "visible") refresh().catch(() => {});
+}, 5000);
 </script>
 </body>
 </html>

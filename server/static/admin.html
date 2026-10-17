@@ -120,7 +120,7 @@ async function mutate(path, body) {
   return data;
 }
 
-function card(item, { now = false, next = false, index = 0, isLast = false, actions = false } = {}) {
+function card(item, { now = false, next = false, index = 0, isLast = false, controls = null } = {}) {
   const idx = index ? `<span class="idx">${index}.</span>` : "";
   const tag = now
     ? `<span class="tag">NOW</span>`
@@ -129,15 +129,21 @@ function card(item, { now = false, next = false, index = 0, isLast = false, acti
       : item.status === "played" || item.status === "skipped"
         ? `<span class="tag done">${item.status === "skipped" ? "跳过" : "已播"}</span>`
         : "";
-  return `<div class="card ${now ? "now" : next ? "next" : ""}">
-    <div class="title">${idx}${tag}${label(item)}</div>
-    <div class="meta"><span>点歌人：${esc(item.requested_by)}</span><span>${item.duration_s ? fmtDur(item.duration_s) : ""}</span></div>
-    ${actions ? `<div class="actions">
+  let row = "";
+  if (controls === "queue") {
+    row = `<div class="actions">
       <button class="mini" data-move="top" data-id="${esc(item.id)}" ${index === 1 ? "disabled" : ""}>⤒ 提前</button>
       <button class="mini" data-move="up" data-id="${esc(item.id)}" ${index <= 1 ? "disabled" : ""}>↑ 上移</button>
       <button class="mini" data-move="down" data-id="${esc(item.id)}" ${isLast ? "disabled" : ""}>↓ 下移</button>
       <button class="mini danger" data-del="${esc(item.id)}">✕ 移出队列</button>
-    </div>` : ""}
+    </div>`;
+  } else if (controls === "history") {
+    row = `<div class="actions"><button class="mini" data-rerequest="${esc(item.id)}">↻ 再点一次</button></div>`;
+  }
+  return `<div class="card ${now ? "now" : next ? "next" : ""}">
+    <div class="title">${idx}${tag}${label(item)}</div>
+    <div class="meta"><span>点歌人：${esc(item.requested_by)}</span><span>${item.duration_s ? fmtDur(item.duration_s) : ""}</span></div>
+    ${row}
   </div>`;
 }
 
@@ -150,13 +156,13 @@ function render(state) {
         index: idx + 1,
         isLast: idx === state.queue.length - 1,
         next: idx === 0,
-        actions: true,
+        controls: "queue",
       })).join("")
     : `<div class="empty">队列空空。</div>`;
   // Oldest first with sequence numbers, matching the request page; 1 is
-  // the first song ever played.
+  // the first song ever played. History cards offer one-tap re-request.
   $("history").innerHTML = state.history.length
-    ? [...state.history].reverse().map((h, idx) => card(h, { index: idx + 1 })).join("")
+    ? [...state.history].reverse().map((h, idx) => card(h, { index: idx + 1, controls: "history" })).join("")
     : `<div class="empty">还没有播过。</div>`;
   const box = $("allowQueuedDuplicates");
   if (box.checked !== !!state.config.allowQueuedDuplicates) box.checked = !!state.config.allowQueuedDuplicates;
@@ -168,8 +174,10 @@ document.addEventListener("click", async (e) => {
   try {
     if (t.dataset.del) {
       await mutate("/api/delete", { id: t.dataset.del });
-    } else if (t.dataset.move === "up" || t.dataset.move === "down") {
+    } else if (t.dataset.move === "up" || t.dataset.move === "down" || t.dataset.move === "top") {
       await mutate("/api/reorder", { id: t.dataset.id, direction: t.dataset.move });
+    } else if (t.dataset.rerequest) {
+      await mutate("/api/rerequest", { id: t.dataset.rerequest, by: "管理员" });
     } else if (t.id === "skip") {
       await mutate("/api/skip");
     } else {
@@ -203,6 +211,15 @@ function reconnect() {
   es.addEventListener("state", (e) => render(JSON.parse(e.data)));
 }
 reconnect();
+
+/* Same background-tab resilience as the request page: re-sync when the
+   tab becomes visible, plus a light poll while visible. */
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible") refresh().catch(() => {});
+});
+setInterval(() => {
+  if (document.visibilityState === "visible") refresh().catch(() => {});
+}, 5000);
 </script>
 </body>
 </html>
