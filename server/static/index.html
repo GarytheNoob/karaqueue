@@ -185,8 +185,10 @@ $("f").addEventListener("submit", async (e) => {
       throw new Error("服务器返回了网页而不是 JSON，这个端口上跑的可能不是 KaraQueue 服务（检查 node 进程是否启动成功、端口是否被占用）");
     }
     if (body.ok) {
-      msg.textContent = "已加入队列 ✓ " + body.item.title;
-      msg.classList.add("ok");
+      msg.textContent = body.warning ? "已加入队列（提示：" + body.warning + "）" : "已加入队列 ✓ " + body.item.title;
+      if (body.warning) msg.style.color = "#e0a33f";
+      else msg.style.removeProperty("color");
+      msg.classList.add(body.warning ? "" : "ok");
       $("input").value = "";
       $("input").focus();
     } else {

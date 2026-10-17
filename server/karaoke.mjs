@@ -53,6 +53,86 @@ const state = {
 const DEFAULT_CONFIG = { allowQueuedDuplicates: false };
 const sseClients = new Set();
 
+// Overrides let integration tests point the resolver at a local mock.
+const VIEW_API = process.env.KARAQUEUE_VIEW_API || "https://api.bilibili.com/x/web-interface/view";
+const SPI_API = process.env.KARAQUEUE_SPI_API || "https://api.bilibili.com/x/frontend/finger/spi";
+const META_CACHE_FILE = path.join(ROOT, "meta-cache.json");
+const META_CACHE_TTL_MS = 24 * 3600 * 1000;
+const META_CACHE_LIMIT = 300;
+
+/** An error from bilibili's API that we can attribute precisely. */
+class BiliApiError extends Error {
+  constructor(message, code) {
+    super(message);
+    this.code = code; // HTTP status or bilibili's body code
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* Metadata cache + risk-control defenses                              */
+/* ------------------------------------------------------------------ */
+
+// buvid3/buvid4 cookies seed most of bilibili's anonymous API access;
+// fetching them once up front lowers the chance of a 412.
+let buvidCookie = null;
+async function getBuvid() {
+  if (buvidCookie) return buvidCookie;
+  try {
+    const res = await fetch(SPI_API, {
+      headers: { "User-Agent": BROWSER_UA },
+      signal: AbortSignal.timeout(5000),
+    });
+    const body = await res.json();
+    if (body?.code === 0 && body.data?.b_3) {
+      buvidCookie = `buvid3=${body.data.b_3}; buvid4=${body.data.b_4 ?? ""}`;
+    }
+  } catch {
+    /* best effort: request without the cookie if SPI is unavailable */
+  }
+  return buvidCookie;
+}
+
+function loadMetaCache() {
+  const map = new Map();
+  try {
+    const raw = JSON.parse(fs.readFileSync(META_CACHE_FILE, "utf8"));
+    for (const [key, value] of raw) map.set(key, value);
+  } catch {
+    /* missing/corrupt cache: start empty */
+  }
+  return map;
+}
+const metaCache = loadMetaCache();
+
+function saveMetaCache() {
+  // Cap the cache by dropping the oldest entries before writing.
+  while (metaCache.size > META_CACHE_LIMIT) {
+    metaCache.delete(metaCache.keys().next().value);
+  }
+  const tmp = `${META_CACHE_FILE}.tmp`;
+  fs.writeFileSync(tmp, JSON.stringify([...metaCache], null, 0));
+  fs.renameSync(tmp, META_CACHE_FILE);
+}
+
+/** Persist a trimmed-down view so later requests need no network call. */
+function rememberView(parsed, view) {
+  const key = parsed.bvid ?? `av${parsed.aid}`;
+  metaCache.set(key, {
+    t: Date.now(),
+    view: {
+      bvid: view.bvid,
+      title: view.title,
+      owner: { name: view.owner?.name ?? "" },
+      duration: view.duration,
+      pic: view.pic,
+      pages: Array.isArray(view.pages)
+        ? view.pages.map((p) => ({ page: p.page, part: p.part, duration: p.duration }))
+        : [],
+    },
+  });
+  saveMetaCache();
+}
+
 /* ------------------------------------------------------------------ */
 /* Persistence                                                         */
 /* ------------------------------------------------------------------ */
@@ -108,12 +188,16 @@ async function parseInput(rawInput) {
 
   // b23.tv short links are redirects; follow them once to get the real URL.
   if (/b23\.tv/i.test(input)) {
-    const res = await fetch(input, {
-      headers: { "User-Agent": BROWSER_UA },
-      redirect: "follow",
-      signal: AbortSignal.timeout(8000),
-    });
-    input = res.url;
+    try {
+      const res = await fetch(input, {
+        headers: { "User-Agent": BROWSER_UA },
+        redirect: "follow",
+        signal: AbortSignal.timeout(8000),
+      });
+      input = res.url;
+    } catch {
+      throw new Error("b23 短链展开失败（网络或风控），请直接贴完整链接或 BV 号");
+    }
   }
 
   // Expand any pasted URL so ids inside query strings are visible.
@@ -137,23 +221,52 @@ async function parseInput(rawInput) {
   throw new Error("no bilibili video id found in input");
 }
 
-/** Query bilibili's public web API for video metadata. */
+/** Query bilibili's public web API for video metadata, with explicit
+ *  status/content-type checking so blocked or HTML answers fail loudly. */
 async function fetchView({ bvid, aid }) {
+  const cookie = await getBuvid();
   const qs = bvid ? `bvid=${bvid}` : `aid=${aid}`;
-  const res = await fetch(`https://api.bilibili.com/x/web-interface/view?${qs}`, {
-    headers: { "User-Agent": BROWSER_UA, Referer: "https://www.bilibili.com/" },
+  const res = await fetch(`${VIEW_API}?${qs}`, {
+    headers: {
+      "User-Agent": BROWSER_UA,
+      Referer: "https://www.bilibili.com/",
+      Origin: "https://www.bilibili.com",
+      Accept: "application/json, text/plain, */*",
+      "Accept-Language": "zh-CN,zh;q=0.9",
+      ...(cookie ? { Cookie: cookie } : {}),
+    },
     signal: AbortSignal.timeout(8000),
   });
-  const body = await res.json();
+
+  if (!res.ok) {
+    const hints = {
+      412: "B 站风控拦截（HTTP 412），请求被判定为异常客户端；稍后再试或先缓存元数据",
+      403: `B 站拒绝访问（HTTP 403）`,
+      429: "B 站限流（HTTP 429），请求太频繁",
+    };
+    throw new BiliApiError(hints[res.status] ?? `B 站接口异常（HTTP ${res.status}）`, res.status);
+  }
+
+  const contentType = res.headers.get("content-type") || "";
+  const text = await res.text();
+  if (!contentType.includes("json") || text.trimStart().startsWith("<")) {
+    throw new BiliApiError(`B 站返回了网页而不是 JSON（HTTP ${res.status}），疑似风控页面`, res.status);
+  }
+
+  const body = JSON.parse(text);
   if (body.code !== 0) {
     const reasons = {
+      [-400]: "invalid video id (bilibili rejected the id)",
       [-404]: "video not found (deleted or private?)",
-      [-412]: "rate limited by bilibili",
+      [-412]: "blocked by bilibili risk control (code -412)",
     };
-    throw new Error(reasons[body.code] ?? `bilibili api code ${body.code}`);
+    throw new BiliApiError(reasons[body.code] ?? `bilibili api code ${body.code}`, body.code);
   }
   return body.data;
 }
+
+/** Codes meaning "this submission itself is wrong": reject, don't degrade. */
+const USER_ERROR_CODES = new Set([-400, -404]);
 
 /** Build the canonical queue item from view metadata + page number. */
 function makeItem(view, page, requestedBy) {
@@ -179,6 +292,66 @@ function makeItem(view, page, requestedBy) {
     requested_by: requestedBy || "anonymous",
     requested_at: new Date().toISOString(),
   };
+}
+
+/** Build a queue item without metadata: playable link + bare title. */
+function makeFallbackItem(parsed, page, requestedBy) {
+  const bvid = parsed.bvid ?? null;
+  const vid = bvid ?? `av${parsed.aid}`;
+  const p = Math.max(page ?? 1, 1);
+  const hasP = (parsed.page ?? 1) > 1; // only link the P the user asked for
+
+  return {
+    id: `${vid}:p${p}`,
+    platform: "bilibili",
+    video_id: vid,
+    page: p,
+    page_count: 0,
+    title: `${vid}（元数据未获取）`,
+    part: "",
+    uploader: "",
+    duration_s: 0,
+    thumbnail: "",
+    web_url: `https://www.bilibili.com/video/${vid}${hasP ? `?p=${p}` : ""}`,
+    requested_by: requestedBy || "anonymous",
+    requested_at: new Date().toISOString(),
+  };
+}
+
+/**
+ * Resolve view metadata for a parsed input, preferring the cache to avoid
+ * hammering bilibili (and their risk control). Returns { view, warning }:
+ *  - fresh cache hit -> no network at all
+ *  - network success -> view from bilibili, cache updated
+ *  - infra failure (412/HTML/timeout) with stale cache -> stale view
+ *  - infra failure without cache     -> null view (caller enqueues a
+ *     fallback item so the room keeps playing)
+ *  - user errors (video really missing) are rethrown for a 400 response
+ */
+async function resolveView(parsed) {
+  const key = parsed.bvid ?? `av${parsed.aid}`;
+  const cached = metaCache.get(key);
+
+  if (cached && Date.now() - cached.t < META_CACHE_TTL_MS) {
+    return { view: cached.view, warning: null };
+  }
+
+  try {
+    const view = await fetchView(parsed);
+    rememberView(parsed, view);
+    return { view, warning: null };
+  } catch (err) {
+    // Truly invalid or missing video: reject the submission outright.
+    if (err instanceof BiliApiError && USER_ERROR_CODES.has(err.code)) throw err;
+
+    if (cached) {
+      return { view: cached.view, warning: "B站接口暂时不可用（风控或网络），已使用此前缓存的元数据" };
+    }
+    return {
+      view: null,
+      warning: "B站接口暂时不可用（风控或网络），已按纯链接加入队列，标题信息暂时缺失",
+    };
+  }
 }
 
 /* ------------------------------------------------------------------ */
@@ -389,19 +562,21 @@ async function route(req, res, isAdmin = false) {
     const body = await readJsonBody(req);
     try {
       const parsed = await parseInput(body.input);
-      const view = await fetchView(parsed);
-      const item = makeItem(view, parsed.page, body.by);
+      const { view, warning } = await resolveView(parsed);
+      // Truly missing videos (bilibili code -404) reject; infra failures
+      // degrade to a link-only item so the room keeps playing.
+      const item = view ? makeItem(view, parsed.page, body.by) : makeFallbackItem(parsed, parsed.page, body.by);
       const dup = findInQueue(item);
       if (dup) {
         const where = dup.id === state.current?.id ? "正在播放" : "已在队列中";
         return sendJson(res, 409, {
           ok: false,
-          message: `点歌失败：「${item.part || item.title}」（P${item.page}）${where}`,
+          message: `点歌失败：「${dup.part || dup.title}」（P${dup.page}）${where}`,
         });
       }
       enqueue(item);
       promoteNextIfIdle();
-      return sendJson(res, 200, { ok: true, item, state: publicState() });
+      return sendJson(res, 200, { ok: true, item, warning, state: publicState() });
     } catch (err) {
       return sendJson(res, 400, { ok: false, message: String(err.message || err) });
     }

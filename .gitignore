@@ -1,5 +1,6 @@
 # Local data
 server/queue.json
+server/meta-cache.json
 
 # macOS
 .DS_Store
