@@ -76,31 +76,33 @@ async function advance(mark = "played") {
 /* Navigation                                                          */
 /* ------------------------------------------------------------------ */
 
-async function findPlayerTab() {
-  // Narrow first: an actual watch page on either platform.
-  const watch = await chrome.tabs.query({
-    url: [
-      "*://*.bilibili.com/video/*",
-      "*://*.youtube.com/watch*",
-      "*://*.youtube.com/shorts*",
-      "*://youtu.be/*",
-    ],
-  });
-  if (watch[0]) return watch[0];
-  // Broad fallback: any tab on the two platforms. Driving a stray home
-  // page or in-transit redirect beats spawning yet another tab - the
-  // strict watch-path patterns above can miss a tab for seconds at a
-  // time, which used to open a new tab on every 15 s alarm.
-  const anySite = await chrome.tabs.query({
-    url: ["*://*.bilibili.com/*", "*://*.youtube.com/*", "*://youtu.be/*"],
-  });
-  return anySite[0] ?? null;
-}
+// Watch pages first, then any page of the two platforms: the strict
+// watch-path patterns can miss a tab for seconds at a time (redirects,
+// consent pages), and driving a stray tab beats spawning a new one.
+const WATCH_URLS = [
+  "*://*.bilibili.com/video/*",
+  "*://*.youtube.com/watch*",
+  "*://*.youtube.com/shorts*",
+  "*://youtu.be/*",
+];
+const SITE_URLS = ["*://*.bilibili.com/*", "*://*.youtube.com/*", "*://youtu.be/*"];
 
 /** Remember which tab we drive so later reconciles always reuse it,
  * even when its URL is momentarily something unmatchable. */
 async function rememberPlayerTab(tabId) {
   if (tabId) await chrome.storage.session.set({ playerTabId: tabId });
+}
+
+/** Minimum spacing between tab creations, so no pathology (a dead
+ * remembered ID plus a racing query) can ever spam the tab bar. */
+const TAB_CREATE_COOLDOWN_MS = 30000;
+let lastTabCreateAt = 0;
+
+async function findPlayerTab() {
+  const watch = await chrome.tabs.query({ url: WATCH_URLS });
+  if (watch[0]) return watch[0];
+  const anySite = await chrome.tabs.query({ url: SITE_URLS });
+  return anySite[0] ?? null;
 }
 
 /**
@@ -111,26 +113,42 @@ async function reconcile(preferredTabId) {
   const { current } = await getState();
   if (!current) return null;
 
-  let tab = null;
-  if (preferredTabId) tab = await chrome.tabs.get(preferredTabId).catch(() => null);
-  if (!tab) {
-    // The tab we drove last, whatever its URL is right now. It may be
-    // mid-redirect or on an error page - navigating it is still the
-    // cheapest fix and never spawns anything new.
-    const { playerTabId } = await chrome.storage.session.get("playerTabId");
-    if (playerTabId) tab = await chrome.tabs.get(playerTabId).catch(() => null);
-  }
-  if (!tab || !tab.url) tab = await findPlayerTab();
+  // Collect every candidate exactly once, in priority order: the tab
+  // this call prefers, the tab we drove last, then pattern matches.
+  const candidates = [];
+  const push = (tab) => {
+    if (tab?.id && !candidates.some((t) => t.id === tab.id)) candidates.push(tab);
+  };
+  if (preferredTabId) push(await chrome.tabs.get(preferredTabId).catch(() => null));
+  const { playerTabId } = await chrome.storage.session.get("playerTabId");
+  if (playerTabId) push(await chrome.tabs.get(playerTabId).catch(() => null));
+  (await chrome.tabs.query({ url: WATCH_URLS })).slice(0, 5).forEach(push);
+  (await chrome.tabs.query({ url: SITE_URLS })).slice(0, 5).forEach(push);
+
+  // Best first: a tab that already plays the right track; else the one
+  // we drove last (it may be mid-redirect or on an error page, but
+  // navigating it is still the cheapest fix and spawns nothing).
+  const tab = candidates.find((t) => t.url && trackIdentity(t.url) === current.id) ?? candidates.find((t) => t.url) ?? null;
 
   if (!tab) {
     // Nothing usable anywhere: one fresh background tab, remembered.
+    if (Date.now() - lastTabCreateAt < TAB_CREATE_COOLDOWN_MS) {
+      console.log(`[karaqueue] player tab missing, but one was created ${Math.round((Date.now() - lastTabCreateAt) / 1000)}s ago; not spawning again yet`);
+      return null;
+    }
+    lastTabCreateAt = Date.now();
     const created = await chrome.tabs.create({ url: current.web_url, active: false });
     await rememberPlayerTab(created.id);
+    console.log(`[karaqueue] no player tab on either platform; created background tab ${created.id} for ${current.id}`);
     return null;
   }
 
   await rememberPlayerTab(tab.id);
-  if (trackIdentity(tab.url) === current.id) return tab;
+  if (trackIdentity(tab.url) === current.id) {
+    console.log(`[karaqueue] tab ${tab.id} already playing ${current.id}`);
+    return tab;
+  }
+  console.log(`[karaqueue] pointing tab ${tab.id} (${String(tab.url).slice(0, 70)}) at ${current.id}`);
   await chrome.tabs.update(tab.id, { url: current.web_url });
   return tab;
 }

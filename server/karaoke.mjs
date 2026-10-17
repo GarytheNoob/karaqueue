@@ -205,13 +205,18 @@ function loadProxyConfig() {
     process.env.HTTP_PROXY ||
     process.env.http_proxy;
   if (fromEnv) {
-    activeProxy = parseProxy(fromEnv, "环境变量 HTTPS_PROXY/KARAQUEUE_PROXY");
+    activeProxy = parseProxy(fromEnv, "env HTTPS_PROXY/KARAQUEUE_PROXY");
   }
   if (!activeProxy && process.platform === "darwin") {
     activeProxy = macOSSystemProxy();
   }
   if (activeProxy) {
-    console.log(`[karaqueue] 跨网请求走代理 ${activeProxy.host}:${activeProxy.port}（${activeProxy.source}），B 站仍走直连`);
+    console.log(
+      `[karaqueue] cross-network requests go through proxy ${activeProxy.host}:${activeProxy.port}` +
+        ` (${activeProxy.source}); bilibili stays direct`,
+    );
+  } else {
+    console.log("[karaqueue] no outbound proxy found; cross-network requests go direct");
   }
 }
 
@@ -235,11 +240,11 @@ function macOSSystemProxy() {
       ["HTTPEnable", "HTTPProxy", "HTTPPort"],
     ]) {
       if (Number(pick(enableKey)) === 1 && pick(hostKey)) {
-        return { host: pick(hostKey), port: Number(pick(portKey)) || 8080, source: "macOS 系统代理" };
+        return { host: pick(hostKey), port: Number(pick(portKey)) || 8080, source: "macOS system proxy" };
       }
     }
     if (Number(pick("SOCKSEnable")) === 1) {
-      console.log("[karaqueue] 系统只开了 SOCKS 代理（暂不支持），跨网请求走直连");
+      console.log("[karaqueue] system proxy is SOCKS-only (not supported); cross-network requests stay direct");
     }
   } catch {
     /* headless or no scutil: stay direct */
@@ -273,9 +278,9 @@ function httpsGetViaProxy(urlString, headers, timeoutMs) {
       clearTimeout(timer);
       sock.destroy();
       tlsSocket?.destroy();
-      reject(new MetaApiError(`走代理请求失败：${message}`, "proxy"));
+      reject(new MetaApiError(`tunnel request failed: ${message}`, "proxy"));
     };
-    timer = setTimeout(() => fail("超时"), timeoutMs);
+    timer = setTimeout(() => fail("timeout"), timeoutMs);
     sock.on("error", (e) => fail(e.message));
 
     // Stage 1: the proxy's answer to our CONNECT.
@@ -285,7 +290,7 @@ function httpsGetViaProxy(urlString, headers, timeoutMs) {
       if (!head.includes("\r\n\r\n")) return;
       sock.off("data", onData);
       const status = head.slice(0, head.indexOf("\r\n"));
-      if (!/^HTTP\/1\.[01] 200/.test(status)) return fail(`CONNECT 被拒：${status}`);
+      if (!/^HTTP\/1\.[01] 200/.test(status)) return fail(`CONNECT refused: ${status}`);
 
       // Stage 2: TLS inside the tunnel, then a plain GET.
       tlsSocket = tls.connect({ socket: sock, servername: u.hostname }, () => {
@@ -293,7 +298,7 @@ function httpsGetViaProxy(urlString, headers, timeoutMs) {
           .map(([k, v]) => `${k}: ${v}`);
         tlsSocket.write(`GET ${u.pathname}${u.search} HTTP/1.1\r\n${lines.join("\r\n")}\r\n\r\n`);
       });
-      tlsSocket.on("error", (e) => fail(`TLS/请求失败：${e.message}`));
+      tlsSocket.on("error", (e) => fail(`TLS/GET failed: ${e.message}`));
       const chunks = [];
       tlsSocket.on("data", (c) => chunks.push(c));
       tlsSocket.on("close", () => {
@@ -301,7 +306,7 @@ function httpsGetViaProxy(urlString, headers, timeoutMs) {
         try {
           resolve(parseHttpMessage(Buffer.concat(chunks)));
         } catch (e) {
-          reject(e instanceof MetaApiError ? e : new MetaApiError(`代理响应异常：${e.message}`, "proxy"));
+          reject(e instanceof MetaApiError ? e : new MetaApiError(`proxy response parse failed: ${e.message}`, "proxy"));
         }
       });
     });
@@ -313,7 +318,7 @@ function httpsGetViaProxy(urlString, headers, timeoutMs) {
 function parseHttpMessage(buf) {
   const raw = buf.toString("latin1");
   const sep = raw.indexOf("\r\n\r\n");
-  if (sep < 0) throw new MetaApiError("代理响应不完整", "proxy");
+  if (sep < 0) throw new MetaApiError("proxy response incomplete", "proxy");
   const headLines = raw.slice(0, sep).split("\r\n");
   const headers = {};
   for (const line of headLines.slice(1)) {
@@ -606,7 +611,7 @@ async function resolveYouTubeMeta(videoId) {
     rememberYouTubeMeta(videoId, meta);
     return { meta, warning: null };
   } catch (err) {
-    console.warn(`[karaqueue] YouTube 元数据获取失败（${videoId}）：`, err.message);
+    console.warn(`[karaqueue] youtube metadata fetch failed (${videoId}):`, err.message);
     // The video itself is gone: reject the submission outright.
     if (err instanceof MetaApiError && err.code === 404) throw err;
 
