@@ -32,6 +32,9 @@
   .card .title { font-size: 14px; line-height: 1.4; }
   .card .meta { font-size: 12px; color: #888; margin-top: 4px; display: flex; justify-content: space-between; }
   .tag { font-size: 11px; background: #2f6fed; color: #fff; border-radius: 4px; padding: 1px 6px; margin-right: 6px; vertical-align: 2px; }
+  .tag.next { background: #e0a33f; color: #2b1d00; }
+  .tag.done { background: #444; color: #aaa; }
+  .card.next { border-color: #e0a33f; }
   .idx { color: #67718a; font-size: 12px; font-weight: 600; margin-right: 7px; font-variant-numeric: tabular-nums; }
   .empty { color: #666; font-size: 13px; padding: 6px 2px; }
   .actions { margin-top: 8px; display: flex; gap: 6px; }
@@ -52,8 +55,11 @@
   <div class="actions"><button class="mini" id="skip">跳过当前，直接播下一首</button></div>
 
   <h2>队列</h2>
-  <div class="hint">↑↓ 调整顺序 · ✕ 移出队列。改动实时广播到大屏和所有点歌页。</div>
+  <div class="hint">⤒ 提前到队首 · ↑↓ 调整顺序 · ✕ 移出队列。改动实时广播到大屏和所有点歌页。</div>
   <div id="queue"></div>
+
+  <h2>已播历史</h2>
+  <div id="history"></div>
 
   <h2>点歌规则</h2>
   <div class="configbox">
@@ -114,14 +120,22 @@ async function mutate(path, body) {
   return data;
 }
 
-function card(item, { now = false, index = 0 } = {}) {
+function card(item, { now = false, next = false, index = 0, isLast = false, actions = false } = {}) {
   const idx = index ? `<span class="idx">${index}.</span>` : "";
-  return `<div class="card ${now ? "now" : ""}">
-    <div class="title">${idx}${now ? `<span class="tag">NOW</span>` : ""}${label(item)}</div>
+  const tag = now
+    ? `<span class="tag">NOW</span>`
+    : next
+      ? `<span class="tag next">NEXT</span>`
+      : item.status === "played" || item.status === "skipped"
+        ? `<span class="tag done">${item.status === "skipped" ? "跳过" : "已播"}</span>`
+        : "";
+  return `<div class="card ${now ? "now" : next ? "next" : ""}">
+    <div class="title">${idx}${tag}${label(item)}</div>
     <div class="meta"><span>点歌人：${esc(item.requested_by)}</span><span>${item.duration_s ? fmtDur(item.duration_s) : ""}</span></div>
-    ${!now ? `<div class="actions">
+    ${actions ? `<div class="actions">
+      <button class="mini" data-move="top" data-id="${esc(item.id)}" ${index === 1 ? "disabled" : ""}>⤒ 提前</button>
       <button class="mini" data-move="up" data-id="${esc(item.id)}" ${index <= 1 ? "disabled" : ""}>↑ 上移</button>
-      <button class="mini" data-move="down" data-id="${esc(item.id)}" ${index >= 999 ? "disabled" : ""}>↓ 下移</button>
+      <button class="mini" data-move="down" data-id="${esc(item.id)}" ${isLast ? "disabled" : ""}>↓ 下移</button>
       <button class="mini danger" data-del="${esc(item.id)}">✕ 移出队列</button>
     </div>` : ""}
   </div>`;
@@ -132,8 +146,18 @@ function render(state) {
     ? card(state.current, { now: true })
     : `<div class="empty">（空闲中，等待点歌）</div>`;
   $("queue").innerHTML = state.queue.length
-    ? state.queue.map((i, idx) => card(i, { index: idx + 1 })).join("")
+    ? state.queue.map((i, idx) => card(i, {
+        index: idx + 1,
+        isLast: idx === state.queue.length - 1,
+        next: idx === 0,
+        actions: true,
+      })).join("")
     : `<div class="empty">队列空空。</div>`;
+  // Oldest first with sequence numbers, matching the request page; 1 is
+  // the first song ever played.
+  $("history").innerHTML = state.history.length
+    ? [...state.history].reverse().map((h, idx) => card(h, { index: idx + 1 })).join("")
+    : `<div class="empty">还没有播过。</div>`;
   const box = $("allowQueuedDuplicates");
   if (box.checked !== !!state.config.allowQueuedDuplicates) box.checked = !!state.config.allowQueuedDuplicates;
 }

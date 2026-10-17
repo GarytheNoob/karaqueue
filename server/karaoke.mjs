@@ -418,14 +418,16 @@ function deleteQueued(id) {
   return removed;
 }
 
-/** Move a queued item up or down by one position (admin). */
+/** Move a queued item up, down, or all the way to the top (admin). */
 function reorderQueued(id, direction) {
   const idx = state.queue.findIndex((i) => i.id === id);
   if (idx < 0) return { ok: false, message: "not in queue" };
-  const target = direction === "up" ? idx - 1 : idx + 1;
+  if (direction === "top" && idx === 0) return { ok: true }; // already first, nothing to do
+  const target = direction === "up" ? idx - 1 : direction === "top" ? 0 : idx + 1;
   if (target < 0) return { ok: false, message: "already at the top of the queue" };
   if (target >= state.queue.length) return { ok: false, message: "already at the bottom of the queue" };
-  [state.queue[idx], state.queue[target]] = [state.queue[target], state.queue[idx]];
+  const [item] = state.queue.splice(idx, 1);
+  state.queue.splice(target, 0, item);
   state.revision += 1;
   saveState();
   broadcast();
@@ -642,9 +644,9 @@ async function routeAdmin(req, res, url, pathname) {
 
   if (req.method === "POST" && pathname === "/api/reorder") {
     const body = await readJsonBody(req);
-    const direction = body.direction === "up" || body.direction === "down" ? body.direction : null;
+    const direction = ["up", "down", "top"].includes(body.direction) ? body.direction : null;
     if (!direction) {
-      return sendJson(res, 400, { ok: false, message: "direction must be \"up\" or \"down\"" });
+      return sendJson(res, 400, { ok: false, message: 'direction must be "up", "down" or "top"' });
     }
     const result = reorderQueued(String(body.id ?? ""), direction);
     return sendJson(res, result.ok ? 200 : 404, result);
