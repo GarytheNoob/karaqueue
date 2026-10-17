@@ -39,8 +39,10 @@
   .empty { color: #666; font-size: 13px; padding: 6px 2px; }
   .actions { margin-top: 8px; display: flex; gap: 6px; }
   .bar { display: flex; gap: 8px; align-items: center; }
-  .configbox { display: flex; gap: 10px; align-items: center; background: #17171d; border: 1px solid #26262e; border-radius: 12px; padding: 12px; font-size: 14px; }
+  .configbox { background: #17171d; border: 1px solid #26262e; border-radius: 12px; padding: 12px; font-size: 14px; }
   .configbox input { width: 18px; height: 18px; accent-color: #2f6fed; }
+  .configbox .head { display: flex; gap: 10px; align-items: center; }
+  .configbox .desc { color: #778; font-size: 12px; margin-top: 6px; line-height: 1.5; }
   .hint { color: #778; font-size: 12px; margin-top: 6px; line-height: 1.5; }
 </style>
 </head>
@@ -54,24 +56,28 @@
   <div id="now"></div>
   <div class="actions"><button class="mini" id="skip">跳过当前，直接播下一首</button></div>
 
+  <h2>点歌规则</h2>
+  <div class="configbox">
+    <div class="head">
+      <input type="checkbox" id="allowQueuedDuplicates" />
+      <label for="allowQueuedDuplicates">允许队列中重复点同一首歌</label>
+    </div>
+    <div class="desc">关闭：同一首歌重复提交会被拒绝（正在播放/已在队列中）。开启：同一首歌可以在排队里出现多次。</div>
+  </div>
+  <div class="configbox">
+    <div class="head">
+      <input type="checkbox" id="oneSongPerGuest" />
+      <label for="oneSongPerGuest">公平轮唱 · 每人限点一首</label>
+    </div>
+    <div class="desc">开启后每人（按浏览器 Cookie 识别，不受改昵称影响）同时只能有一首在唱或在排，等自己那首唱完才能再点；被锁定期间，点歌页上该客人的「加入队列」按钮置灰、昵称输入框锁定。</div>
+  </div>
+
   <h2>队列</h2>
   <div class="hint">⤒ 提前到队首 · ↑↓ 调整顺序 · ✕ 移出队列。改动实时广播到大屏和所有点歌页。</div>
   <div id="queue"></div>
 
   <h2>已播历史</h2>
   <div id="history"></div>
-
-  <h2>点歌规则</h2>
-  <div class="configbox">
-    <input type="checkbox" id="allowQueuedDuplicates" />
-    <label for="allowQueuedDuplicates">允许队列中重复点同一首歌</label>
-  </div>
-  <div class="configbox">
-    <input type="checkbox" id="oneSongPerGuest" />
-    <label for="oneSongPerGuest">公平轮唱 · 每人限点一首</label>
-  </div>
-  <div class="hint">开启公平轮唱后，每人（按浏览器 Cookie 识别，不受改昵称影响）同时只能有一首在唱或在排；等自己那首唱完才能再点。被锁定期间，点歌页上该客人的「加入队列」按钮置灰、昵称输入框锁定。</div>
-  <div class="hint">关闭：同一首歌重复提交会被拒绝（正在播放/已在队列中）。开启：同一首歌可以在排队里出现多次。</div>
 </main>
 
 <script>
