@@ -118,7 +118,7 @@ function card(item, isNow) {
   const tag = isNow ? `<span class="tag">NOW</span>` : item.status === "played" || item.status === "skipped" ? `<span class="tag done">${item.status === "skipped" ? "跳过" : "已播"}</span>` : "";
   return `<div class="card ${isNow ? "now" : ""}">
     <div class="title">${tag}${label(item)}</div>
-    <div class="meta"><span>by ${esc(item.requested_by)}</span><span>${esc(item.uploader)}${item.duration_s ? " · " + fmtDur(item.duration_s) : ""}</span></div>
+    <div class="meta"><span>点歌人：${esc(item.requested_by)}</span><span>${item.duration_s ? fmtDur(item.duration_s) : ""}</span></div>
   </div>`;
 }
 
