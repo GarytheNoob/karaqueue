@@ -155,12 +155,14 @@ function makeItem(view, page, requestedBy) {
 /* Queue operations                                                    */
 /* ------------------------------------------------------------------ */
 
-function findDuplicate(item) {
+/**
+ * Find the item if it is already playing or queued. Played history is
+ * deliberately NOT checked: re-requesting a played track is allowed,
+ * while duplicate queue entries are not.
+ */
+function findInQueue(item) {
   if (state.current?.id === item.id) return state.current;
-  return (
-    state.queue.find((i) => i.id === item.id) ??
-    state.history.slice(0, 10).find((i) => i.id === item.id)
-  );
+  return state.queue.find((i) => i.id === item.id);
 }
 
 function enqueue(item) {
@@ -309,11 +311,12 @@ async function route(req, res) {
       const parsed = await parseInput(body.input);
       const view = await fetchView(parsed);
       const item = makeItem(view, parsed.page, body.by);
-      const dup = findDuplicate(item);
+      const dup = findInQueue(item);
       if (dup) {
+        const where = dup.id === state.current?.id ? "正在播放" : "已在队列中";
         return sendJson(res, 409, {
           ok: false,
-          message: `duplicate: "P${item.page} ${item.part || item.title}" is already ${dup.id === state.current?.id ? "playing" : "in the recent list"}`,
+          message: `点歌失败：「${item.part || item.title}」（P${item.page}）${where}`,
         });
       }
       enqueue(item);
