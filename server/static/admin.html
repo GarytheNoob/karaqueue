@@ -66,6 +66,11 @@
     <input type="checkbox" id="allowQueuedDuplicates" />
     <label for="allowQueuedDuplicates">允许队列中重复点同一首歌</label>
   </div>
+  <div class="configbox">
+    <input type="checkbox" id="oneSongPerGuest" />
+    <label for="oneSongPerGuest">公平轮唱 · 每人限点一首</label>
+  </div>
+  <div class="hint">开启公平轮唱后，每人（按浏览器 Cookie 识别，不受改昵称影响）同时只能有一首在唱或在排；等自己那首唱完才能再点。被锁定期间，点歌页上该客人的「加入队列」按钮置灰、昵称输入框锁定。</div>
   <div class="hint">关闭：同一首歌重复提交会被拒绝（正在播放/已在队列中）。开启：同一首歌可以在排队里出现多次。</div>
 </main>
 
@@ -166,6 +171,8 @@ function render(state) {
     : `<div class="empty">还没有播过。</div>`;
   const box = $("allowQueuedDuplicates");
   if (box.checked !== !!state.config.allowQueuedDuplicates) box.checked = !!state.config.allowQueuedDuplicates;
+  const fairBox = $("oneSongPerGuest");
+  if (fairBox.checked !== !!state.config.oneSongPerGuest) fairBox.checked = !!state.config.oneSongPerGuest;
 }
 
 /* Click handling for the queue action buttons. */
@@ -192,6 +199,15 @@ document.addEventListener("click", async (e) => {
 $("allowQueuedDuplicates").addEventListener("change", async (e) => {
   try {
     await mutate("/api/config", { allowQueuedDuplicates: e.target.checked });
+  } catch (err) {
+    alert("保存失败：" + err.message);
+    e.target.checked = !e.target.checked;
+  }
+});
+
+$("oneSongPerGuest").addEventListener("change", async (e) => {
+  try {
+    await mutate("/api/config", { oneSongPerGuest: e.target.checked });
   } catch (err) {
     alert("保存失败：" + err.message);
     e.target.checked = !e.target.checked;

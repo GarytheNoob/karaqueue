@@ -31,7 +31,7 @@
 
 - 跳过当前（立即生效）、移出队列、逐格调序（上移/下移）**以及一键置顶的 ⤒ 提前按钮**
 - 已播历史列表：带序号 + **一键"再点一次"**（把播过的歌重新入队；房间空闲时立即开播）
-- 房间规则开关："允许队列中重复点同一首歌"（关：宁播不重；开：同一首歌可在队列叠多条）
+- 房间规则开关（两个）："允许队列中重复点同一首歌"（关：宁播不重；开：同一首歌可在队列叠多条），以及 **"公平轮唱 · 每人限点一首"**（开启后每人同时只能有一首在唱或在排，按浏览器 Cookie 识别、改昵称/刷新页面都不影响；被锁定期间，点歌页上该客人的"加入队列"按钮置灰、昵称输入框锁定，直到自己的歌唱完）
 - 可选 `ADMIN_PIN`：管理后台所有读写需要 PIN
 
 ## 组成
@@ -42,8 +42,8 @@
 
 服务端 API 速览（供折腾用）：
 
-- 公共端口：`GET /`（页面）、`GET /api/state`、`GET /api/events`（SSE）、`POST /api/submit` `{input, by}`、`POST /api/advance`、`POST /api/skip`
-- 管理端口：`GET /`（控制台）、`GET /api/state`、`GET /api/events`、`GET /api/config`、`POST /api/config` `{allowQueuedDuplicates}`、`POST /api/skip`、`POST /api/delete` `{id}`、`POST /api/reorder` `{id, direction: up|down|top}`、`POST /api/rerequest` `{id}`
+- 公共端口：`GET /`（页面）、`GET /api/state`、`GET /api/events`（SSE）、`POST /api/submit` `{input, by, uid}`、`POST /api/advance`、`POST /api/skip`
+- 管理端口：`GET /`（控制台）、`GET /api/state`、`GET /api/events`、`GET /api/config`、`POST /api/config` `{allowQueuedDuplicates, oneSongPerGuest}`、`POST /api/skip`、`POST /api/delete` `{id}`、`POST /api/reorder` `{id, direction: up|down|top}`、`POST /api/rerequest` `{id}`
 
 ## 运行
 

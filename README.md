@@ -31,7 +31,7 @@ A LAN karaoke queue player prototype: people submit bilibili videos (BV id / lin
 
 - Skip the current track (immediate), delete queued tracks, fine-grained reorder (up/down) **plus a one-tap "take to top" (⤒) button**.
 - Play history list with sequence numbers and a **one-tap "request again"** button (re-enqueues a played track; an idle room starts playing it immediately).
-- Room rule toggle: "allow the same track in the queue multiple times" (off: duplicates of queued/playing tracks are rejected; on: guests may stack the same song).
+- Room rule toggles: "allow the same track in the queue multiple times" (off: duplicates of queued/playing tracks are rejected; on: guests may stack the same song), and **"fair rotation — one song per guest"** (on: a guest may have at most one track playing or queued at a time, matched by a browser cookie that survives nickname edits and reloads; locked guests see a greyed-out submit button and a locked nickname input on the request page until their song finishes).
 - Optional `ADMIN_PIN` gates all admin reads/mutations.
 
 ## Layout
@@ -42,8 +42,8 @@ A LAN karaoke queue player prototype: people submit bilibili videos (BV id / lin
 
 Server API quick reference (for tinkering):
 
-- Public port: `GET /` (page), `GET /api/state`, `GET /api/events` (SSE), `POST /api/submit` `{input, by}`, `POST /api/advance`, `POST /api/skip`
-- Admin port: `GET /` (console), `GET /api/state`, `GET /api/events`, `GET /api/config`, `POST /api/config` `{allowQueuedDuplicates}`, `POST /api/skip`, `POST /api/delete` `{id}`, `POST /api/reorder` `{id, direction: up|down|top}`, `POST /api/rerequest` `{id}`
+- Public port: `GET /` (page), `GET /api/state`, `GET /api/events` (SSE), `POST /api/submit` `{input, by, uid}`, `POST /api/advance`, `POST /api/skip`
+- Admin port: `GET /` (console), `GET /api/state`, `GET /api/events`, `GET /api/config`, `POST /api/config` `{allowQueuedDuplicates, oneSongPerGuest}`, `POST /api/skip`, `POST /api/delete` `{id}`, `POST /api/reorder` `{id, direction: up|down|top}`, `POST /api/rerequest` `{id}`
 
 ## Running
 

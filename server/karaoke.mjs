@@ -5,7 +5,10 @@
  * Public endpoints (PORT, default 7777):
  *   GET  /                -> song request page (static/index.html)
  *   GET  /api/state       -> full state snapshot
- *   POST /api/submit      -> body { input, by }; resolves input, enqueues it
+ *   POST /api/submit      -> body { input, by, uid }; resolves input, enqueues it
+ *                              (uid binds the request to the browser cookie
+ *                              so fair-mode lockout survives nickname edits)
+ *
  *   POST /api/advance     -> mark current as played, promote the next item
  *   POST /api/skip        -> mark current as skipped, promote the next item
  *   GET  /api/events      -> SSE stream; broadcasts full state on every change
@@ -15,7 +18,7 @@
  *   GET  /api/state       -> full state snapshot
  *   GET  /api/events      -> SSE stream
  *   GET  /api/config      -> { config }
- *   POST /api/config      -> { allowQueuedDuplicates: boolean }
+ *   POST /api/config      -> { allowQueuedDuplicates, oneSongPerGuest: boolean }
  *   POST /api/skip        -> skip the current track
  *   POST /api/delete      -> { id }; remove a queued track
  *   POST /api/reorder     -> { id, direction: "up"|"down" }
@@ -47,10 +50,10 @@ const state = {
   current: null,
   queue: [],
   history: [],
-  config: { allowQueuedDuplicates: false },
+  config: { allowQueuedDuplicates: false, oneSongPerGuest: false },
   revision: 0,
 };
-const DEFAULT_CONFIG = { allowQueuedDuplicates: false };
+const DEFAULT_CONFIG = { allowQueuedDuplicates: false, oneSongPerGuest: false };
 const sseClients = new Set();
 
 // Overrides let integration tests point the resolver at a local mock.
@@ -444,6 +447,18 @@ function setConfig(patch) {
 }
 
 /**
+ * Fair-mode check: find what a guest already has pending, matched by their
+ * browser cookie uid (nickname alone is not reliable). Covers both the
+ * currently playing track and the queue, so a guest can request a new song
+ * as soon as their own one has finished playing.
+ */
+function findPendingForGuest(uid) {
+  if (!uid) return null;
+  const active = state.current ? [state.current, ...state.queue] : state.queue;
+  return active.find((i) => i.requester_uid && i.requester_uid === uid) ?? null;
+}
+
+/**
  * Re-request a track from the play history (admin "play it again"):
  * copies the stored item into the queue with a fresh timestamp and
  * requester, running the same duplicate rules as a fresh submission.
@@ -458,6 +473,9 @@ function reRequest(id, by) {
   };
   delete item.status;
   delete item.finished_at;
+  // A host re-request is the admin's own action: it must not count against
+  // the original guest's fair-mode quota.
+  item.requester_uid = null;
   const dup = findInQueue(item);
   if (dup) {
     const where = dup.id === state.current?.id ? "正在播放" : "已在队列中";
@@ -592,12 +610,26 @@ async function route(req, res, isAdmin = false) {
 
   if (req.method === "POST" && pathname === "/api/submit") {
     const body = await readJsonBody(req);
+    // Fair mode: one song per guest at a time. Checked before parsing so
+    // locked guests never trigger bilibili metadata requests.
+    if (state.config.oneSongPerGuest) {
+      const pending = findPendingForGuest(String(body.uid ?? ""));
+      if (pending) {
+        return sendJson(res, 403, {
+          ok: false,
+          message: `限点一首：你点的「${pending.part || pending.title}」${pending.id === state.current?.id ? "正在播放" : "还在队列里"}，等它唱完才能再点`,
+        });
+      }
+    }
     try {
       const parsed = await parseInput(body.input);
       const { view, warning } = await resolveView(parsed);
       // Truly missing videos (bilibili code -404) reject; infra failures
       // degrade to a link-only item so the room keeps playing.
       const item = view ? makeItem(view, parsed.page, body.by) : makeFallbackItem(parsed, parsed.page, body.by);
+      // Bind the browser cookie uid so fair-mode lockout keeps working
+      // even if the guest changes their nickname later.
+      item.requester_uid = String(body.uid ?? "").slice(0, 80) || null;
       const dup = findInQueue(item);
       if (dup) {
         const where = dup.id === state.current?.id ? "正在播放" : "已在队列中";
@@ -651,6 +683,9 @@ async function routeAdmin(req, res, url, pathname) {
     const patch = {};
     if (typeof body.allowQueuedDuplicates === "boolean") {
       patch.allowQueuedDuplicates = body.allowQueuedDuplicates;
+    }
+    if (typeof body.oneSongPerGuest === "boolean") {
+      patch.oneSongPerGuest = body.oneSongPerGuest;
     }
     if (!Object.keys(patch).length) {
       return sendJson(res, 400, { ok: false, message: "no recognized config keys" });
