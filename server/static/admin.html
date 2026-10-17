@@ -102,7 +102,9 @@ function fmtDur(s) {
 }
 
 function label(item) {
-  return esc(item.title) + (item.page_count > 1 ? ` <span style="color:#7ab">· P${item.page}</span>` : "");
+  // bilibili stays unmarked (the default), youtube gets a red badge.
+  const src = item.platform === "youtube" ? ` <span style="color:#d33">[YT]</span>` : "";
+  return esc(item.title) + src + (item.page_count > 1 ? ` <span style="color:#7ab">· P${item.page}</span>` : "");
 }
 
 async function mutate(path, body) {

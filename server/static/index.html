@@ -136,7 +136,9 @@ function fmtDur(s) {
 
 function label(item) {
   const part = item.page_count > 1 ? ` · P${item.page}` : "";
-  return `${esc(item.title)}${part ? ` <span style="color:#7ab">${part}</span>` : ""}`;
+  // bilibili stays unmarked (the default), youtube gets a red badge.
+  const src = item.platform === "youtube" ? ` <span style="color:#d33">[YT]</span>` : "";
+  return `${esc(item.title)}${src}${part ? ` <span style="color:#7ab">${part}</span>` : ""}`;
 }
 
 function card(item, { now = false, next = false, index = 0, withdraw = false } = {}) {

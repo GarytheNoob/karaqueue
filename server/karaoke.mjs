@@ -60,15 +60,17 @@ const sseClients = new Set();
 // Overrides let integration tests point the resolver at a local mock.
 const VIEW_API = process.env.KARAQUEUE_VIEW_API || "https://api.bilibili.com/x/web-interface/view";
 const SPI_API = process.env.KARAQUEUE_SPI_API || "https://api.bilibili.com/x/frontend/finger/spi";
+// Keyless, official: title/author/thumb only, no duration.
+const OEMBED_API = process.env.KARAQUEUE_OEMBED_API || "https://www.youtube.com/oembed";
 const META_CACHE_FILE = path.join(ROOT, "meta-cache.json");
 const META_CACHE_TTL_MS = 24 * 3600 * 1000;
 const META_CACHE_LIMIT = 300;
 
-/** An error from bilibili's API that we can attribute precisely. */
-class BiliApiError extends Error {
+/** An error from a platform metadata API that we can attribute precisely. */
+class MetaApiError extends Error {
   constructor(message, code) {
     super(message);
-    this.code = code; // HTTP status or bilibili's body code
+    this.code = code; // HTTP status or a platform's body code
   }
 }
 
@@ -137,6 +139,19 @@ function rememberView(parsed, view) {
   saveMetaCache();
 }
 
+/** Persist the trimmed YouTube oEmbed payload under a `yt:` prefixed key. */
+function rememberYouTubeMeta(videoId, meta) {
+  metaCache.set(`yt:${videoId}`, {
+    t: Date.now(),
+    meta: {
+      title: meta.title ?? "",
+      author_name: meta.author_name ?? "",
+      thumbnail_url: meta.thumbnail_url ?? "",
+    },
+  });
+  saveMetaCache();
+}
+
 /* ------------------------------------------------------------------ */
 /* Persistence                                                         */
 /* ------------------------------------------------------------------ */
@@ -172,6 +187,9 @@ function saveState() {
 const BV_RE = /(BV[0-9A-Za-z]{10})/;
 const AID_RE = /av(\d{4,})/i;
 const PAGE_RE = /[?&]p=(\d+)/;
+// watch?v=, youtu.be, /shorts/, /embed/, /live/ all land on one video id.
+// The lookahead keeps following id characters out of the 11-char group.
+const YT_RAW_RE = /(?:youtube\.com\/watch\?[^ ]*?v=|youtube\.com\/(?:shorts|embed|live)\/|youtu\.be\/)([A-Za-z0-9_-]{11})(?![A-Za-z0-9_-])/i;
 
 /**
  * Parse a user submission (BV id, av id, full URL, b23.tv short link)
@@ -208,6 +226,10 @@ async function parseInput(rawInput) {
   // Do not canonicalize pasted URLs before per-platform dispatch; other
   // platforms get their own branch here and keep their original URL.
 
+  // --- youtube ----------------------------------------------------------
+  const yt = input.match(YT_RAW_RE);
+  if (yt) return { platform: "youtube", videoId: yt[1] };
+
   // --- bilibili ---------------------------------------------------------
   // Expand any pasted URL so ids inside query strings are visible.
   if (/^https?:\/\//.test(input)) {
@@ -227,7 +249,7 @@ async function parseInput(rawInput) {
   const aid = input.match(AID_RE);
   if (aid) return { platform: "bilibili", aid: aid[1], page };
 
-  throw new Error("no bilibili video id found in input");
+  throw new Error("没认出视频链接（支持 B 站 BV/av 号、YouTube 视频链接）");
 }
 
 /** Query bilibili's public web API for video metadata, with explicit
@@ -253,13 +275,13 @@ async function fetchView({ bvid, aid }) {
       403: `B 站拒绝访问（HTTP 403）`,
       429: "B 站限流（HTTP 429），请求太频繁",
     };
-    throw new BiliApiError(hints[res.status] ?? `B 站接口异常（HTTP ${res.status}）`, res.status);
+    throw new MetaApiError(hints[res.status] ?? `B 站接口异常（HTTP ${res.status}）`, res.status);
   }
 
   const contentType = res.headers.get("content-type") || "";
   const text = await res.text();
   if (!contentType.includes("json") || text.trimStart().startsWith("<")) {
-    throw new BiliApiError(`B 站返回了网页而不是 JSON（HTTP ${res.status}），疑似风控页面`, res.status);
+    throw new MetaApiError(`B 站返回了网页而不是 JSON（HTTP ${res.status}），疑似风控页面`, res.status);
   }
 
   const body = JSON.parse(text);
@@ -269,7 +291,7 @@ async function fetchView({ bvid, aid }) {
       [-404]: "video not found (deleted or private?)",
       [-412]: "blocked by bilibili risk control (code -412)",
     };
-    throw new BiliApiError(reasons[body.code] ?? `bilibili api code ${body.code}`, body.code);
+    throw new MetaApiError(reasons[body.code] ?? `bilibili api code ${body.code}`, body.code);
   }
   return body.data;
 }
@@ -351,7 +373,7 @@ async function resolveView(parsed) {
     return { view, warning: null };
   } catch (err) {
     // Truly invalid or missing video: reject the submission outright.
-    if (err instanceof BiliApiError && USER_ERROR_CODES.has(err.code)) throw err;
+    if (err instanceof MetaApiError && USER_ERROR_CODES.has(err.code)) throw err;
 
     if (cached) {
       return { view: cached.view, warning: "B站接口暂时不可用（风控或网络），已使用此前缓存的元数据" };
@@ -363,12 +385,99 @@ async function resolveView(parsed) {
   }
 }
 
+/* --- youtube ---------------------------------------------------------- */
+
+/**
+ * Query YouTube's keyless oEmbed endpoint. It answers with the title,
+ * author and thumbnail but never a duration, and it answers 401/403 for
+ * private or embed-disabled videos (those still play on youtube.com, so
+ * unlike a 404 they degrade to a link-only item instead of rejecting).
+ */
+async function fetchYouTubeMeta(videoId) {
+  const target = encodeURIComponent(`https://www.youtube.com/watch?v=${videoId}`);
+  const res = await fetch(`${OEMBED_API}?format=json&url=${target}`, {
+    headers: { "User-Agent": BROWSER_UA, Accept: "application/json" },
+    signal: AbortSignal.timeout(8000),
+  });
+
+  if (!res.ok) {
+    const hints = {
+      401: "视频在 YouTube 上锁定元数据（私密或不允许嵌入）",
+      403: "YouTube 拒绝访问（HTTP 403）",
+      404: "视频在 YouTube 上不存在或已删除（404）",
+    };
+    throw new MetaApiError(hints[res.status] ?? `YouTube 接口异常（HTTP ${res.status}）`, res.status);
+  }
+
+  const contentType = res.headers.get("content-type") || "";
+  const text = await res.text();
+  if (!contentType.includes("json") || text.trimStart().startsWith("<")) {
+    throw new MetaApiError(`YouTube 返回了网页而不是 JSON（HTTP ${res.status}）`, res.status);
+  }
+  return JSON.parse(text);
+}
+
+/**
+ * Resolve YouTube metadata with the same cache/degrade ladder as
+ * bilibili: fresh cache -> no network; stale cache -> degraded warning;
+ * nothing -> link-only fallback. Only a definitive 404 rejects.
+ */
+async function resolveYouTubeMeta(videoId) {
+  const key = `yt:${videoId}`;
+  const cached = metaCache.get(key);
+
+  if (cached?.meta && Date.now() - cached.t < META_CACHE_TTL_MS) {
+    return { meta: cached.meta, warning: null };
+  }
+
+  try {
+    const meta = await fetchYouTubeMeta(videoId);
+    rememberYouTubeMeta(videoId, meta);
+    return { meta, warning: null };
+  } catch (err) {
+    // The video itself is gone: reject the submission outright.
+    if (err instanceof MetaApiError && err.code === 404) throw err;
+
+    if (cached?.meta) {
+      return { meta: cached.meta, warning: "YouTube 元数据暂时拿不到（网络或权限），已使用此前缓存的元数据" };
+    }
+    return {
+      meta: null,
+      warning: "YouTube 元数据暂时拿不到（网络或权限），已按纯链接加入队列，标题信息暂时缺失",
+    };
+  }
+}
+
+/** Build the YouTube queue item; runtime details come from the player,
+ * since oEmbed has no duration and YouTube has no numbered pages. */
+function makeYouTubeItem(videoId, meta, requestedBy) {
+  return {
+    id: `${videoId}:p1`,
+    platform: "youtube",
+    video_id: videoId,
+    page: 1,
+    page_count: 0,
+    title: meta?.title ?? `${videoId}（元数据未获取）`,
+    part: "",
+    uploader: meta?.author_name ?? "",
+    duration_s: 0,
+    thumbnail: meta?.thumbnail_url ?? "",
+    web_url: `https://www.youtube.com/watch?v=${videoId}`,
+    requested_by: requestedBy || "anonymous",
+    requested_at: new Date().toISOString(),
+  };
+}
+
 /**
  * Resolve parsed input to a finished queue item. Per-platform dispatch
  * lives here so the route handler stays source-agnostic.
  * Returns { item, warning } (warning present on degraded resolution).
  */
 async function resolveItem(parsed, requestedBy) {
+  if (parsed.platform === "youtube") {
+    const { meta, warning } = await resolveYouTubeMeta(parsed.videoId);
+    return { item: makeYouTubeItem(parsed.videoId, meta, requestedBy), warning };
+  }
   if (parsed.platform !== "bilibili") {
     throw new Error(`unsupported platform: ${parsed.platform}`);
   }
