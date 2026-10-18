@@ -78,8 +78,11 @@ function fmtDur(s) {
 
 function card(item, { tag, tagClass, now }) {
   const part = item.page_count > 1 ? ` · P${item.page}` : "";
+  // Titles without metadata arrive as a bare video id + `title_missing`;
+  // the popup copy stays Chinese (the popup itself has no switcher yet).
+  const title = String(item.title ?? "") + (item.title_missing ? "（元数据未获取）" : "");
   return `<div class="card ${now ? "now" : tagClass ? tagClass : ""}">
-    <div class="title"><span class="tag ${tagClass}">${tag}</span>${esc(item.title)}${part ? ` <span style="color:#7ab">· P${item.page}</span>` : ""}</div>
+    <div class="title"><span class="tag ${tagClass}">${tag}</span>${esc(title)}${part ? ` <span style="color:#7ab">· P${item.page}</span>` : ""}</div>
     <div class="meta"><span>点歌人：${esc(item.requested_by)}</span><span>${item.duration_s ? fmtDur(item.duration_s) : ""}</span></div>
   </div>`;
 }
