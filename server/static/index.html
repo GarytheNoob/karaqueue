@@ -135,6 +135,12 @@ function esc(s) {
   return String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 }
 
+/** Titles stored server-side may lack metadata (title_missing flag);
+ *  each client renders its own localized suffix. */
+function titleText(item) {
+  return String(item.title ?? "") + (item.title_missing ? t("card.meta_missing") : "");
+}
+
 function fmtDur(s) {
   if (!s) return "";
   const m = Math.floor(s / 60), r = s % 60;
@@ -145,7 +151,7 @@ function label(item) {
   const part = item.page_count > 1 ? ` · P${item.page}` : "";
   // bilibili stays unmarked (the default), youtube gets a red badge.
   const src = item.platform === "youtube" ? ` <span style="color:#d33">[YT]</span>` : "";
-  return `${esc(item.title)}${src}${part ? ` <span style="color:#7ab">${part}</span>` : ""}`;
+  return `${esc(titleText(item))}${src}${part ? ` <span style="color:#7ab">${part}</span>` : ""}`;
 }
 
 function card(item, { now = false, next = false, index = 0, withdraw = false } = {}) {
@@ -225,7 +231,8 @@ $("f").addEventListener("submit", async (e) => {
   try {
     const res = await fetch("/api/submit", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      // The lang header lets the server answer in the switched language.
+      headers: { "Content-Type": "application/json", "X-Karaqueue-Lang": i18nLang },
       body: JSON.stringify({ input, by: byInput.value.trim() || "anonymous", uid: UID }),
     });
     const text = await res.text();
@@ -244,7 +251,7 @@ $("f").addEventListener("submit", async (e) => {
       if (body.state) render(body.state);
       msg.textContent = body.warning
         ? t("msg.submitted_warning", { warning: body.warning })
-        : t("msg.submitted", { title: body.item.title });
+        : t("msg.submitted", { title: titleText(body.item) });
       if (body.warning) msg.style.color = "#e0a33f";
       else msg.style.removeProperty("color");
       msg.classList.add(body.warning ? "" : "ok");
@@ -274,13 +281,13 @@ document.addEventListener("click", async (e) => {
   try {
     const res = await fetch("/api/withdraw", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", "X-Karaqueue-Lang": i18nLang },
       body: JSON.stringify({ id, uid: UID }),
     });
     const body = await res.json().catch(() => null);
     if (res.ok && body?.ok) {
       if (body.state) render(body.state);
-      msg.textContent = t("msg.withdrawn", { title: body.item.part || body.item.title });
+      msg.textContent = t("msg.withdrawn", { title: body.item.part || titleText(body.item) });
       msg.classList.add("ok");
     } else {
       msg.textContent = (body && body.message) || t("msg.withdraw_failed");

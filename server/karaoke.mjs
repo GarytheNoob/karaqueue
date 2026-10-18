@@ -30,6 +30,9 @@
  *   POST /api/reorder     -> { id, direction: "up"|"down" }
  *
  * Persistence: server/queue.json (in-memory state, written atomically).
+ * User-facing server strings (submit errors, warnings) are translated
+ * per request from the page's `X-Karaqueue-Lang` header or `?lang=`
+ * query, using the same lang packs as the pages; default zh-CN.
  * Run: node server/karaoke.mjs   (env: PORT, HOST, ADMIN_PORT)
  */
 import http from "node:http";
@@ -72,11 +75,71 @@ const META_CACHE_FILE = path.join(ROOT, "meta-cache.json");
 const META_CACHE_TTL_MS = 24 * 3600 * 1000;
 const META_CACHE_LIMIT = 300;
 
-/** An error from a platform metadata API that we can attribute precisely. */
+/* --- server-side i18n ------------------------------------------------
+ * The pages already carry a language choice (static/i18n lang packs,
+ * picked by the switcher). Server-generated strings - API response
+ * messages, degrade warnings - join the same files and are translated
+ * at request time from the client's hint: the `X-Karaqueue-Lang`
+ * header (pages always send it) or a `?lang=` query, falling back to
+ * zh-CN. Unknown keys fall back to the zh-CN pack, keeping callers
+ * without the header (the extension) fully in Chinese. */
+
+const LANG_PACKS = {};
+{
+  try {
+    for (const name of fs.readdirSync(path.join(STATIC_DIR, "i18n"))) {
+      const m = name.match(/^([a-zA-Z-]+)\.json$/);
+      if (!m) continue;
+      const dict = JSON.parse(fs.readFileSync(path.join(STATIC_DIR, "i18n", name), "utf8"));
+      if (typeof dict === "object" && dict !== null && !Array.isArray(dict)) LANG_PACKS[m[1]] = dict;
+    }
+  } catch (err) {
+    console.warn("[karaqueue] language packs unavailable:", err.message);
+  }
+}
+
+const DEFAULT_LANG = "zh-CN";
+
+function tr(lang, key, params) {
+  const table = LANG_PACKS[lang] ?? LANG_PACKS[DEFAULT_LANG] ?? {};
+  const raw = table[key] ?? LANG_PACKS[DEFAULT_LANG]?.[key] ?? key;
+  if (!params) return raw;
+  return String(raw).replace(/\{(\w+)\}/g, (m, name) =>
+    name in params ? String(params[name]) : "",
+  );
+}
+
+/** Resolve the request language: `?lang=` wins over the header over zh-CN. */
+function getLang(req, url) {
+  const candidate = url.searchParams.get("lang") || req.headers["x-karaqueue-lang"];
+  if (typeof candidate === "string" && candidate in LANG_PACKS) return candidate;
+  return DEFAULT_LANG;
+}
+
+/** Item title for user-facing messages, with the localized
+ *  missing-metadata suffix when the title is only a bare video id. */
+function displayName(lang, item) {
+  const base = String(item.part || (item.title ?? ""));
+  return item.title_missing ? base + tr(lang, "card.meta_missing") : base;
+}
+/** An error from a platform metadata API that we can attribute precisely.
+ *  `key`/`params` are the i18n coordinates; `message` stays as a Chinese
+ *  fallback for non-i18n callers. */
 class MetaApiError extends Error {
-  constructor(message, code) {
+  constructor(message, code, key = null, params = null) {
     super(message);
     this.code = code; // HTTP status or a platform's body code
+    this.key = key;
+    this.params = params;
+  }
+}
+
+/** An error caused directly by the submitted input (parse failures). */
+class UserInputError extends Error {
+  constructor(message, key, params = null) {
+    super(message);
+    this.key = key;
+    this.params = params;
   }
 }
 
@@ -172,10 +235,25 @@ function loadState() {
       // Merge over defaults so older state files keep working.
       state.config = { ...DEFAULT_CONFIG, ...(raw.config ?? {}) };
       state.revision = raw.revision ?? 0;
+      migrateLegacyTitles(state);
       console.log(`[state] restored from ${DATA_FILE}`);
     }
   } catch {
     /* first run or corrupted file: start fresh */
+  }
+}
+
+/** Items persisted before this i18n stage baked the Chinese
+ *  "(metadata not fetched)" suffix into stored titles. Split it off into
+ *  the language-independent `title_missing` flag so every client can
+ *  render its own localized suffix. */
+function migrateLegacyTitles(s) {
+  const suffix = "（元数据未获取）";
+  for (const item of [s.current, ...s.queue, ...s.history]) {
+    if (item && typeof item.title === "string" && item.title.endsWith(suffix)) {
+      item.title = item.title.slice(0, -suffix.length);
+      item.title_missing = true;
+    }
   }
 }
 
@@ -399,7 +477,10 @@ async function parseInput(rawInput) {
       });
       input = res.url;
     } catch {
-      throw new Error("b23 短链展开失败（网络或风控），请直接贴完整链接或 BV 号");
+      throw new UserInputError(
+        "b23 短链展开失败（网络或风控），请直接贴完整链接或 BV 号",
+        "srv.b23_expand_failed",
+      );
     }
   }
 
@@ -429,7 +510,10 @@ async function parseInput(rawInput) {
   const aid = input.match(AID_RE);
   if (aid) return { platform: "bilibili", aid: aid[1], page };
 
-  throw new Error("没认出视频链接（支持 B 站 BV/av 号、YouTube 视频链接）");
+  throw new UserInputError(
+    "没认出视频链接（支持 B 站 BV/av 号、YouTube 视频链接）",
+    "srv.parse_failed",
+  );
 }
 
 /** Query bilibili's public web API for video metadata, with explicit
@@ -451,17 +535,28 @@ async function fetchView({ bvid, aid }) {
 
   if (!res.ok) {
     const hints = {
-      412: "B 站风控拦截（HTTP 412），请求被判定为异常客户端；稍后再试或先缓存元数据",
-      403: `B 站拒绝访问（HTTP 403）`,
-      429: "B 站限流（HTTP 429），请求太频繁",
+      412: ["B 站风控拦截（HTTP 412），请求被判定为异常客户端；稍后再试或先缓存元数据", "srv.bili_412"],
+      403: ["B 站拒绝访问（HTTP 403）", "srv.bili_403"],
+      429: ["B 站限流（HTTP 429），请求太频繁", "srv.bili_429"],
     };
-    throw new MetaApiError(hints[res.status] ?? `B 站接口异常（HTTP ${res.status}）`, res.status);
+    const hit = hints[res.status] ?? [`B 站接口异常（HTTP ${res.status}）`, "srv.bili_http"];
+    throw new MetaApiError(
+      hit[0].includes("{status}") ? hit[0].replace("{status}", res.status) : hit[0],
+      res.status,
+      hit[1],
+      { status: res.status },
+    );
   }
 
   const contentType = res.headers.get("content-type") || "";
   const text = await res.text();
   if (!contentType.includes("json") || text.trimStart().startsWith("<")) {
-    throw new MetaApiError(`B 站返回了网页而不是 JSON（HTTP ${res.status}），疑似风控页面`, res.status);
+    throw new MetaApiError(
+      `B 站返回了网页而不是 JSON（HTTP ${res.status}），疑似风控页面`,
+      res.status,
+      "srv.bili_html",
+      { status: res.status },
+    );
   }
 
   const body = JSON.parse(text);
@@ -518,7 +613,8 @@ function makeFallbackItem(parsed, page, requestedBy) {
     video_id: vid,
     page: p,
     page_count: 0,
-    title: `${vid}（元数据未获取）`,
+    title: vid,
+    title_missing: true,
     part: "",
     uploader: "",
     duration_s: 0,
@@ -556,11 +652,11 @@ async function resolveView(parsed) {
     if (err instanceof MetaApiError && USER_ERROR_CODES.has(err.code)) throw err;
 
     if (cached) {
-      return { view: cached.view, warning: "B站接口暂时不可用（风控或网络），已使用此前缓存的元数据" };
+      return { view: cached.view, warning: { key: "srv.warn_bili_cache" } };
     }
     return {
       view: null,
-      warning: "B站接口暂时不可用（风控或网络），已按纯链接加入队列，标题信息暂时缺失",
+      warning: { key: "srv.warn_bili_nocache" },
     };
   }
 }
@@ -583,15 +679,26 @@ async function fetchYouTubeMeta(videoId) {
 
   if (out.status !== 200) {
     const hints = {
-      401: "视频在 YouTube 上锁定元数据（私密或不允许嵌入）",
-      403: "YouTube 拒绝访问（HTTP 403）",
-      404: "视频在 YouTube 上不存在或已删除（404）",
+      401: ["视频在 YouTube 上锁定元数据（私密或不允许嵌入）", "srv.yt_401"],
+      403: ["YouTube 拒绝访问（HTTP 403）", "srv.yt_403"],
+      404: ["视频在 YouTube 上不存在或已删除（404）", "srv.yt_404"],
     };
-    throw new MetaApiError(hints[out.status] ?? `YouTube 接口异常（HTTP ${out.status}）`, out.status);
+    const hit = hints[out.status] ?? [`YouTube 接口异常（HTTP ${out.status}）`, "srv.yt_http"];
+    throw new MetaApiError(
+      hit[0].includes("{status}") ? hit[0].replace("{status}", out.status) : hit[0],
+      out.status,
+      hit[1],
+      { status: out.status },
+    );
   }
 
   if (!out.contentType.includes("json") || out.text.trimStart().startsWith("<")) {
-    throw new MetaApiError(`YouTube 返回了网页而不是 JSON（HTTP ${out.status}）`, out.status);
+    throw new MetaApiError(
+      `YouTube 返回了网页而不是 JSON（HTTP ${out.status}）`,
+      out.status,
+      "srv.yt_html",
+      { status: out.status },
+    );
   }
   return JSON.parse(out.text);
 }
@@ -619,11 +726,11 @@ async function resolveYouTubeMeta(videoId) {
     if (err instanceof MetaApiError && err.code === 404) throw err;
 
     if (cached?.meta) {
-      return { meta: cached.meta, warning: "YouTube 元数据暂时拿不到（网络或权限），已使用此前缓存的元数据" };
+      return { meta: cached.meta, warning: { key: "srv.warn_yt_cache" } };
     }
     return {
       meta: null,
-      warning: "YouTube 元数据暂时拿不到（网络或权限），已按纯链接加入队列，标题信息暂时缺失",
+      warning: { key: "srv.warn_yt_nocache" },
     };
   }
 }
@@ -637,7 +744,8 @@ function makeYouTubeItem(videoId, meta, requestedBy) {
     video_id: videoId,
     page: 1,
     page_count: 0,
-    title: meta?.title ?? `${videoId}（元数据未获取）`,
+    title: meta?.title ?? videoId,
+    title_missing: !(meta?.title),
     part: "",
     uploader: meta?.author_name ?? "",
     duration_s: 0,
@@ -753,11 +861,11 @@ function deleteQueued(id) {
 /** Move a queued item up, down, or all the way to the top (admin). */
 function reorderQueued(id, direction) {
   const idx = state.queue.findIndex((i) => i.id === id);
-  if (idx < 0) return { ok: false, message: "not in queue" };
+  if (idx < 0) return { ok: false, code: "srv.reorder_not_in_queue" };
   if (direction === "top" && idx === 0) return { ok: true }; // already first, nothing to do
   const target = direction === "up" ? idx - 1 : direction === "top" ? 0 : idx + 1;
-  if (target < 0) return { ok: false, message: "already at the top of the queue" };
-  if (target >= state.queue.length) return { ok: false, message: "already at the bottom of the queue" };
+  if (target < 0) return { ok: false, code: "srv.reorder_at_top" };
+  if (target >= state.queue.length) return { ok: false, code: "srv.reorder_at_bottom" };
   const [item] = state.queue.splice(idx, 1);
   state.queue.splice(target, 0, item);
   state.revision += 1;
@@ -807,8 +915,8 @@ function reRequest(id, by) {
   item.requester_uid = null;
   const dup = findInQueue(item);
   if (dup) {
-    const where = dup.id === state.current?.id ? "正在播放" : "已在队列中";
-    return { ok: false, dupMessage: `点歌失败：「${item.part || item.title}」（P${item.page}）${where}` };
+    const where = dup.id === state.current?.id ? "current" : "queued";
+    return { ok: false, rerequest_dup: { title: item.part || item.title, title_missing: item.title_missing, page: item.page, where } };
   }
   state.queue.push(item);
   state.revision += 1;
@@ -932,6 +1040,7 @@ async function route(req, res, isAdmin = false) {
   if (handlePreflight(req, res)) return;
   const url = new URL(req.url, `http://${req.headers.host}`);
   const { pathname } = url;
+  const lang = getLang(req, url);
 
   if (isAdmin) return routeAdmin(req, res, url, pathname);
 
@@ -959,7 +1068,10 @@ async function route(req, res, isAdmin = false) {
       if (pending) {
         return sendJson(res, 403, {
           ok: false,
-          message: `限点一首：你点的「${pending.part || pending.title}」${pending.id === state.current?.id ? "正在播放" : "还在队列里"}，等它唱完才能再点`,
+          code: pending.id === state.current?.id ? "srv.fair_locked_playing" : "srv.fair_locked_queued",
+          message: tr(lang, pending.id === state.current?.id ? "srv.fair_locked_playing" : "srv.fair_locked_queued", {
+            title: displayName(lang, pending),
+          }),
         });
       }
     }
@@ -967,23 +1079,29 @@ async function route(req, res, isAdmin = false) {
       const parsed = await parseInput(body.input);
       // Truly missing videos (bilibili code -404) reject; infra failures
       // degrade to a link-only item so the room keeps playing.
-      const { item, warning } = await resolveItem(parsed, body.by);
+      const { item, warning: warnKey } = await resolveItem(parsed, body.by);
+      const warning = warnKey ? tr(lang, warnKey.key, warnKey.params) : null;
       // Bind the browser cookie uid so fair-mode lockout keeps working
       // even if the guest changes their nickname later.
       item.requester_uid = String(body.uid ?? "").slice(0, 80) || null;
       const dup = findInQueue(item);
       if (dup) {
-        const where = dup.id === state.current?.id ? "正在播放" : "已在队列中";
+        const dupKey = dup.id === state.current?.id ? "srv.dup_playing" : "srv.dup_queued";
         return sendJson(res, 409, {
           ok: false,
-          message: `点歌失败：「${dup.part || dup.title}」（P${dup.page}）${where}`,
+          code: dupKey,
+          message: tr(lang, dupKey, { title: displayName(lang, dup), page: dup.page }),
         });
       }
       enqueue(item);
       promoteNextIfIdle();
       return sendJson(res, 200, { ok: true, item, warning, state: publicState() });
     } catch (err) {
-      return sendJson(res, 400, { ok: false, message: String(err.message || err) });
+      return sendJson(res, 400, {
+        ok: false,
+        code: err.key ?? null,
+        message: err.key ? tr(lang, err.key, err.params) : String(err.message || err),
+      });
     }
   }
 
@@ -991,15 +1109,15 @@ async function route(req, res, isAdmin = false) {
     const body = await readJsonBody(req);
     const result = withdrawQueued(String(body.id ?? ""), String(body.uid ?? ""));
     if (result.forbidden) {
-      return sendJson(res, 403, { ok: false, message: "只能撤回自己点的歌" });
+      return sendJson(res, 403, {
+        ok: false,
+        code: "srv.withdraw_forbidden",
+        message: tr(lang, "srv.withdraw_forbidden"),
+      });
     }
     if (result.missing) {
-      return sendJson(res, 404, {
-        ok: false,
-        message: result.playing
-          ? "这首正在播放中，撤回不了——切歌请找房主"
-          : "这首歌已不在队列中（可能唱完了或刚被移出）",
-      });
+      const key = result.playing ? "srv.withdraw_playing" : "srv.withdraw_missing";
+      return sendJson(res, 404, { ok: false, code: key, message: tr(lang, key) });
     }
     return sendJson(res, 200, { ok: true, item: result.item, state: publicState() });
   }
@@ -1015,6 +1133,7 @@ async function route(req, res, isAdmin = false) {
 
 /* Admin routes: served on the separate admin port (LAN-trusted, no auth). */
 async function routeAdmin(req, res, url, pathname) {
+  const lang = getLang(req, url);
   if (req.method === "GET" && (pathname === "/" || pathname === "/admin.html")) {
     return serveStatic(res, "admin.html");
   }
@@ -1058,7 +1177,11 @@ async function routeAdmin(req, res, url, pathname) {
     const body = await readJsonBody(req);
     const removed = deleteQueued(String(body.id ?? ""));
     if (!removed) {
-      return sendJson(res, 404, { ok: false, message: `id ${body.id} is not in the queue` });
+      return sendJson(res, 404, {
+        ok: false,
+        code: "srv.id_not_in_queue",
+        message: tr(lang, "srv.id_not_in_queue", { id: body.id }),
+      });
     }
     return sendJson(res, 200, { ok: true, removed });
   }
@@ -1070,17 +1193,33 @@ async function routeAdmin(req, res, url, pathname) {
       return sendJson(res, 400, { ok: false, message: 'direction must be "up", "down" or "top"' });
     }
     const result = reorderQueued(String(body.id ?? ""), direction);
-    return sendJson(res, result.ok ? 200 : 404, result);
+    if (!result.ok) {
+      return sendJson(res, 404, {
+        ...result,
+        message: tr(lang, result.code),
+      });
+    }
+    return sendJson(res, 200, result);
   }
 
   if (req.method === "POST" && pathname === "/api/rerequest") {
     const body = await readJsonBody(req);
     const result = reRequest(String(body.id ?? ""), body.by);
     if (result.notFound) {
-      return sendJson(res, 404, { ok: false, message: `id ${body.id} is not in the play history` });
+      return sendJson(res, 404, {
+        ok: false,
+        code: "srv.id_not_in_history",
+        message: tr(lang, "srv.id_not_in_history", { id: body.id }),
+      });
     }
-    if (result.dupMessage) {
-      return sendJson(res, 409, { ok: false, message: result.dupMessage });
+    if (result.rerequest_dup) {
+      const d = result.rerequest_dup;
+      const key = d.where === "current" ? "srv.dup_playing" : "srv.dup_queued";
+      return sendJson(res, 409, {
+        ok: false,
+        code: key,
+        message: tr(lang, key, { title: d.title + (d.title_missing ? tr(lang, "card.meta_missing") : ""), page: d.page }),
+      });
     }
     return sendJson(res, 200, { ok: true, item: result.item });
   }

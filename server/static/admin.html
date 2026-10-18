@@ -118,13 +118,19 @@ function fmtDur(s) {
 function label(item) {
   // bilibili stays unmarked (the default), youtube gets a red badge.
   const src = item.platform === "youtube" ? ` <span style="color:#d33">[YT]</span>` : "";
-  return esc(item.title) + src + (item.page_count > 1 ? ` <span style="color:#7ab">· P${item.page}</span>` : "");
+  return esc(titleText(item)) + src + (item.page_count > 1 ? ` <span style="color:#7ab">· P${item.page}</span>` : "");
+}
+
+/** Localized missing-metadata suffix, appended by each client. */
+function titleText(item) {
+  return String(item.title ?? "") + (item.title_missing ? t("card.meta_missing") : "");
 }
 
 async function mutate(path, body) {
   const res = await fetch(BASE + path, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    // The lang header localizes server-generated messages.
+    headers: { "Content-Type": "application/json", "X-Karaqueue-Lang": i18nLang },
     body: body ? JSON.stringify(body) : "{}",
   });
   const data = await res.json().catch(() => ({}));

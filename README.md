@@ -71,7 +71,7 @@ Both pages have a language dropdown in the header. The choice is stored in the b
 
 Interface strings live in `server/static/i18n/`, one JSON file per language. `zh-CN.json` and `en.json` ship with identical keys. To add a language: copy `zh-CN.json`, translate the values, then add the code to the `I18N_LANGS` list in `static/i18n/i18n.js`.
 
-Messages returned by the server (submit rejections, degrade warnings) are still Chinese only and will move into the language files later.
+Server-generated messages (submit rejections, degrade warnings) follow the page's language: the pages send the chosen language in an `X-Karaqueue-Lang` header and the server translates from the same files. Clients without the header, like the extension popup, get Chinese.
 
 Server API quick reference, for tinkering:
 
