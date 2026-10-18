@@ -61,9 +61,18 @@ YouTube 元数据走官方免 key 的 oEmbed 接口：标题、作者、缩略�
 - `server/karaoke.mjs`：队列服务，只用 Node 内置模块
 - `server/static/index.html`：手机点歌页
 - `server/static/admin.html`：管理后台
+- `server/static/i18n/`：界面文案，每语言一个 JSON，附共享的 i18n 内核
 - `extension/`：Chrome 插件
 
 两个页面都是无框架单文件。
+
+## 语言
+
+两个页面顶部都有语言下拉框。选好存在浏览器里，刷新页面也不丢，默认中文。
+
+界面文案放在 `server/static/i18n/` 下，每个语言一个 JSON 文件。现有 `zh-CN.json` 和 `en.json`，两份文件的键完全一致。想加新语言，复制 `zh-CN.json`，翻译值，再把语言代码加进 `static/i18n/i18n.js` 的 `I18N_LANGS` 列表。
+
+服务端返回的提示（点歌被拒、降级警告等）现在还是中文，之后会迁进语言文件。
 
 服务端接口速览，供调试用：
 

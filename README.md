@@ -60,9 +60,18 @@ Two room rules are toggles:
 - `server/karaoke.mjs`: the queue server, Node built-ins only
 - `server/static/index.html`: the request page
 - `server/static/admin.html`: the admin console
+- `server/static/i18n/`: UI strings, one JSON per language plus the shared i18n core
 - `extension/`: the Chrome extension
 
 Both pages are single-file and framework-free.
+
+## Languages
+
+Both pages have a language dropdown in the header. The choice is stored in the browser and survives reloads; the default is Chinese.
+
+Interface strings live in `server/static/i18n/`, one JSON file per language. `zh-CN.json` and `en.json` ship with identical keys. To add a language: copy `zh-CN.json`, translate the values, then add the code to the `I18N_LANGS` list in `static/i18n/i18n.js`.
+
+Messages returned by the server (submit rejections, degrade warnings) are still Chinese only and will move into the language files later.
 
 Server API quick reference, for tinkering:
 

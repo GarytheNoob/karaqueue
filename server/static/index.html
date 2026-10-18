@@ -64,46 +64,53 @@
   .empty { color: #666; font-size: 13px; padding: 6px 2px; }
   header { display: flex; justify-content: space-between; align-items: baseline; }
   header small { color: #666; }
+  #lang {
+    background: #1c1c22; border: 1px solid #33333d; color: #ddd;
+    border-radius: 8px; padding: 4px 6px; font-size: 13px;
+  }
 </style>
 </head>
 <body>
 <main>
   <header>
-    <h1>KaraQueue 点歌</h1>
+    <h1 data-i18n="index.title">KaraQueue 点歌</h1>
+    <small><select id="lang"></select></small>
     <small id="queueCount"></small>
   </header>
 
   <form id="f">
-    <input id="by" placeholder="你的昵称" autocomplete="nickname" />
-    <input id="input" placeholder="BV号 / 链接 / B站分享文本" required />
-    <button id="btn" type="submit">加入队列</button>
+    <input id="by" autocomplete="nickname" data-i18n-placeholder="index.by_placeholder" />
+    <input id="input" required data-i18n-placeholder="index.input_placeholder" />
+    <button id="btn" type="submit" data-i18n="index.submit">加入队列</button>
     <div class="msg" id="msg"></div>
   </form>
 
-  <a class="history-link" href="#/history">已播历史 <span id="historyCount"></span> ›</a>
+  <a class="history-link" href="#/history"><span data-i18n="index.history_link">已播历史</span> <span id="historyCount"></span> ›</a>
 
   <section id="view-main" class="view">
-    <h2>正在播放</h2>
+    <h2 data-i18n="head.now_playing">正在播放</h2>
     <div id="now"></div>
 
-    <h2>队列</h2>
+    <h2 data-i18n="head.queue">队列</h2>
     <div id="queue"></div>
   </section>
 </section>
 
 <section id="view-history" class="view">
   <header>
-    <a class="back" href="#/">‹ 返回点歌</a>
-    <h1>已播历史</h1>
+    <a class="back" href="#/" data-i18n="index.back">‹ 返回点歌</a>
+    <h1 data-i18n="head.history">已播历史</h1>
   </header>
   <div id="history"></div>
 </section>
 </main>
 
+<script src="i18n/i18n.js"></script>
 <script>
 "use strict";
 /* Client logic: submit + live state via SSE. Kept vanilla so the whole
    server stays dependency-free. */
+window.I18N_TITLE_KEY = "index.title";
 const $ = (id) => document.getElementById(id);
 const byInput = $("by");
 const msg = $("msg");
@@ -146,21 +153,21 @@ function card(item, { now = false, next = false, index = 0, withdraw = false } =
   // "Mine" badge (green) marks every track this browser requested,
   // everywhere: now playing, queue and history.
   const mine = !!item.requester_uid && item.requester_uid === UID;
-  const mineTag = mine ? `<span class="tag mine">我点的</span>` : "";
+  const mineTag = mine ? `<span class="tag mine">${t("tag.mine")}</span>` : "";
   const tag = now
     ? `<span class="tag">NOW</span>${mineTag}`
     : next
       ? `<span class="tag next">NEXT</span>${mineTag}`
       : `${mineTag}${item.status === "played" || item.status === "skipped"
-          ? `<span class="tag done">${item.status === "skipped" ? "跳过" : "已播"}</span>`
+          ? `<span class="tag done">${t(item.status === "skipped" ? "tag.skipped" : "tag.played")}</span>`
           : ""}`;
   const idx = index
     ? `<span class="idx">${index}.</span>`
     : "";
   return `<div class="card ${now ? "now" : next ? "next" : ""}">
     <div class="title">${idx}${tag}${label(item)}</div>
-    <div class="meta"><span>点歌人：${esc(item.requested_by)}</span><span>${item.duration_s ? fmtDur(item.duration_s) : ""}</span></div>
-    ${withdraw && mine ? `<div class="actions"><button class="mini" data-withdraw="${esc(item.id)}" title="从队列中撤回这首歌">✕ 撤回</button></div>` : ""}
+    <div class="meta"><span>${esc(t("card.requested_by", { by: item.requested_by }))}</span><span>${item.duration_s ? fmtDur(item.duration_s) : ""}</span></div>
+    ${withdraw && mine ? `<div class="actions"><button class="mini" data-withdraw="${esc(item.id)}" title="${esc(t("index.withdraw_title"))}">${esc(t("index.withdraw"))}</button></div>` : ""}
   </div>`;
 }
 
@@ -176,25 +183,25 @@ function applyFairMode() {
       .some((i) => i.requester_uid && i.requester_uid === UID);
   const btn = $("btn");
   btn.disabled = mine;
-  btn.textContent = mine ? "已点一首 · 唱后再点" : "加入队列";
-  btn.title = mine ? "每人同时限点一首，你的歌唱完才能再点" : "";
+  btn.textContent = mine ? t("index.fair.locked") : t("index.submit");
+  btn.title = mine ? t("index.fair.submit_lock") : "";
   byInput.disabled = mine;
-  byInput.title = mine ? "你的歌在排队期间不能修改昵称" : "";
+  byInput.title = mine ? t("index.fair.nick_lock") : "";
 }
 
 function render(state) {
   lastState = state;
-  $("queueCount").textContent = `剩 ${state.queue.length} 首`;
+  $("queueCount").textContent = t("index.queue_count", { n: state.queue.length });
   $("historyCount").textContent = state.history.length ? `(${state.history.length})` : "";
-  $("now").innerHTML = state.current ? card(state.current, { now: true }) : `<div class="empty">（空闲中，等待点歌）</div>`;
+  $("now").innerHTML = state.current ? card(state.current, { now: true }) : `<div class="empty">${t("empty.now")}</div>`;
   $("queue").innerHTML = state.queue.length
     ? state.queue.map((i, idx) => card(i, { next: idx === 0, withdraw: true })).join("")
-    : `<div class="empty">队列空空，快点歌！</div>`;
+    : `<div class="empty">${t("empty.queue")}</div>`;
   // History is stored newest-first on the server; display oldest-first so
   // index 1 is the first song ever played, newest at the bottom.
   $("history").innerHTML = state.history.length
     ? [...state.history].reverse().map((item, idx) => card(item, { index: idx + 1 })).join("")
-    : `<div class="empty">还没有播过。</div>`;
+    : `<div class="empty">${t("empty.history")}</div>`;
   applyFairMode();
 }
 
@@ -229,23 +236,25 @@ $("f").addEventListener("submit", async (e) => {
       // The server answered with an HTML page instead of JSON. This build
       // always answers JSON, so that usually means something else owns
       // this address/port (e.g. another dev server or network preview).
-      throw new Error("服务器返回了网页而不是 JSON，这个端口上跑的可能不是 KaraQueue 服务（检查 node 进程是否启动成功、端口是否被占用）");
+      throw new Error(t("msg.not_json"));
     }
     if (body.ok) {
       // Render the fresh state right away so the fair-mode lock applies
       // before the next SSE frame lands.
       if (body.state) render(body.state);
-      msg.textContent = body.warning ? "已加入队列（提示：" + body.warning + "）" : "已加入队列 ✓ " + body.item.title;
+      msg.textContent = body.warning
+        ? t("msg.submitted_warning", { warning: body.warning })
+        : t("msg.submitted", { title: body.item.title });
       if (body.warning) msg.style.color = "#e0a33f";
       else msg.style.removeProperty("color");
       msg.classList.add(body.warning ? "" : "ok");
       $("input").value = "";
       $("input").focus();
     } else {
-      msg.textContent = body.message || "提交失败";
+      msg.textContent = body.message || t("msg.submit_failed");
     }
   } catch (err) {
-    msg.textContent = "点歌失败: " + (err.message || err);
+    msg.textContent = t("msg.submit_error", { e: err.message || err });
   } finally {
     // Re-enable for the next submit; fair-mode lockout (if any) is
     // re-applied immediately from the latest known state.
@@ -271,13 +280,13 @@ document.addEventListener("click", async (e) => {
     const body = await res.json().catch(() => null);
     if (res.ok && body?.ok) {
       if (body.state) render(body.state);
-      msg.textContent = `已撤回：「${body.item.part || body.item.title}」`;
+      msg.textContent = t("msg.withdrawn", { title: body.item.part || body.item.title });
       msg.classList.add("ok");
     } else {
-      msg.textContent = (body && body.message) || "撤回失败";
+      msg.textContent = (body && body.message) || t("msg.withdraw_failed");
     }
   } catch (err) {
-    msg.textContent = "撤回失败: " + (err.message || err);
+    msg.textContent = t("msg.withdraw_error", { e: err.message || err });
   }
 });
 
@@ -286,10 +295,18 @@ async function refresh() {
   render(await res.json());
 }
 
-// Initial fetch + live updates.
-refresh();
-const es = new EventSource("/api/events");
-es.addEventListener("state", (e) => render(JSON.parse(e.data)));
+/* Language switching re-renders the dynamic parts (cards, counts,
+ * fair-mode lock) in the new language. */
+setOnLangSwitch(() => {
+  if (lastState) render(lastState);
+});
+
+/* Boot sequence: resolve the language first, then talk to the server. */
+initI18n(() => {
+  refresh();
+  const es = new EventSource("/api/events");
+  es.addEventListener("state", (e) => render(JSON.parse(e.data)));
+});
 
 /* Mobile browsers freeze background tabs and may drop the SSE stream
    without notice (iOS Safari does not always reconnect). As a fallback,

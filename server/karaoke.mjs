@@ -18,6 +18,9 @@
  *
  * Admin endpoints (ADMIN_PORT, default 7778):
  *   GET  /                -> admin console (static/admin.html)
+ *   GET  /i18n/<lang>.json -> UI strings for the page language switcher
+ *                             (files under static/i18n/; public port too,
+ *                             /i18n/i18n.js is the shared core script)
  *   GET  /api/state       -> full state snapshot
  *   GET  /api/events      -> SSE stream
  *   GET  /api/config      -> { config }
@@ -896,6 +899,23 @@ function serveStatic(res, name) {
   res.end(fs.readFileSync(file));
 }
 
+// One translation file per language plus the shared i18n core, all under
+// static/i18n/: /i18n/<lang>.json from the pages, /i18n/i18n.js loaded by
+// the page <script>. Pages fetch them relative to their origin so both
+// ports need the route. The name is regex-validated before touching the
+// filesystem, so there is no path traversal surface.
+const I18N_PATH_RE = /^\/i18n\/([a-zA-Z0-9-]{2,10})\.(json|js)$/;
+function serveI18n(res, name, ext) {
+  const mime = ext === "js" ? "text/javascript; charset=utf-8" : "application/json; charset=utf-8";
+  try {
+    const file = fs.readFileSync(path.join(STATIC_DIR, "i18n", `${name}.${ext}`));
+    res.writeHead(200, { "Content-Type": mime });
+    res.end(file);
+  } catch {
+    sendJson(res, 404, { ok: false, message: `no such file under /i18n/: ${name}.${ext}` });
+  }
+}
+
 function serveEvents(req, res) {
   res.writeHead(200, {
     "Content-Type": "text/event-stream",
@@ -914,6 +934,9 @@ async function route(req, res, isAdmin = false) {
   const { pathname } = url;
 
   if (isAdmin) return routeAdmin(req, res, url, pathname);
+
+  const langMatch = req.method === "GET" && pathname.match(I18N_PATH_RE);
+  if (langMatch) return serveI18n(res, langMatch[1], langMatch[2]);
 
   if (req.method === "GET" && (pathname === "/" || pathname === "/index.html")) {
     return serveStatic(res, "index.html");
@@ -995,6 +1018,9 @@ async function routeAdmin(req, res, url, pathname) {
   if (req.method === "GET" && (pathname === "/" || pathname === "/admin.html")) {
     return serveStatic(res, "admin.html");
   }
+
+  const langMatch = req.method === "GET" && pathname.match(I18N_PATH_RE);
+  if (langMatch) return serveI18n(res, langMatch[1], langMatch[2]);
 
   if (req.method === "GET" && pathname === "/api/state") {
     return sendJson(res, 200, publicState());

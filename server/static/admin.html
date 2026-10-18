@@ -45,51 +45,65 @@
   .configbox .head { display: flex; gap: 10px; align-items: center; }
   .configbox .desc { color: #778; font-size: 12px; margin-top: 6px; line-height: 1.5; }
   .hint { color: #778; font-size: 12px; margin-top: 6px; line-height: 1.5; }
+  #lang {
+    background: #1c1c22; border: 1px solid #33333d; color: #ddd;
+    border-radius: 8px; padding: 4px 6px; font-size: 13px;
+  }
+  .desc[data-i18n] { white-space: pre-line; }
 </style>
 </head>
 <body>
 <main>
-  <h1>KaraQueue 管理后台</h1>
+  <div class="bar">
+    <h1 data-i18n="admin.title">KaraQueue 管理后台</h1>
+    <select id="lang"></select>
+  </div>
 
-  <h2>正在播放</h2>
+  <h2 data-i18n="head.now_playing">正在播放</h2>
   <div id="now"></div>
-  <div class="actions"><button class="mini" id="skip">跳过当前，直接播下一首</button></div>
+  <div class="actions"><button class="mini" id="skip" data-i18n="admin.skip">跳过当前，直接播下一首</button></div>
 
-  <h2>点歌规则</h2>
+  <h2 data-i18n="admin.rules_head">点歌规则</h2>
   <div class="configbox">
     <div class="head">
       <input type="checkbox" id="allowQueuedDuplicates" />
-      <label for="allowQueuedDuplicates">允许队列中重复点同一首歌</label>
+      <label for="allowQueuedDuplicates" data-i18n="admin.dup_label">允许队列中重复点同一首歌</label>
     </div>
-    <div class="desc">关闭：同一首歌重复提交会被拒绝（正在播放/已在队列中）。<br />开启：同一首歌可以在排队里出现多次。</div>
+    <div class="desc" data-i18n="admin.dup_desc">关闭：同一首歌重复提交会被拒绝（正在播放/已在队列中）。
+开启：同一首歌可以在排队里出现多次。</div>
   </div>
   <div class="configbox">
     <div class="head">
       <input type="checkbox" id="oneSongPerGuest" />
-      <label for="oneSongPerGuest">公平轮唱 · 每人限点一首</label>
+      <label for="oneSongPerGuest" data-i18n="admin.fair_label">公平轮唱 · 每人限点一首</label>
     </div>
-    <div class="desc">开启后每人（按浏览器 Cookie 识别，不受改昵称影响）同时只能有一首在唱或在排，等自己那首唱完才能再点；被锁定期间，点歌页上该客人的「加入队列」按钮置灰、昵称输入框锁定。</div>
+    <div class="desc" data-i18n="admin.fair_desc">开启后每人（按浏览器 Cookie 识别，不受改昵称影响）同时只能有一首在唱或在排，等自己那首唱完才能再点；被锁定期间，点歌页上该客人的「加入队列」按钮置灰、昵称输入框锁定。</div>
   </div>
 
-  <h2>队列</h2>
-  <div class="hint">⤒ 提前到队首 · ↑↓ 调整顺序 · ✕ 移出队列。改动实时广播到大屏和所有点歌页。</div>
+  <h2 data-i18n="head.queue">队列</h2>
+  <div class="hint" data-i18n="admin.queue_hint">⤒ 提前到队首 · ↑↓ 调整顺序 · ✕ 移出队列。改动实时广播到大屏和所有点歌页。</div>
   <div id="queue"></div>
 
-  <h2>已播历史</h2>
+  <h2 data-i18n="head.history">已播历史</h2>
   <div id="history"></div>
 </main>
 
+<script src="i18n/i18n.js"></script>
 <script>
 "use strict";
 /* Admin console: delete/reorder queue items, skip, and toggle the
    queued-duplicate rule. Reads state via SSE with a pairing initial
    fetch, mirroring the request page. */
+window.I18N_TITLE_KEY = "admin.title";
 const $ = (id) => document.getElementById(id);
 
 /* Some endpoints exist with another meaning on the public port (skip on
    the public API is unauthenticated); the admin console always talks to
    the admin port explicitly. */
 const BASE = `${location.origin}`;
+
+/* Last state seen, kept so a language switch can re-render it. */
+let lastState = null;
 
 function esc(s) {
   return String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -125,30 +139,31 @@ function card(item, { now = false, next = false, index = 0, isLast = false, cont
     : next
       ? `<span class="tag next">NEXT</span>`
       : item.status === "played" || item.status === "skipped"
-        ? `<span class="tag done">${item.status === "skipped" ? "跳过" : "已播"}</span>`
+        ? `<span class="tag done">${t(item.status === "skipped" ? "tag.skipped" : "tag.played")}</span>`
         : "";
   let row = "";
   if (controls === "queue") {
     row = `<div class="actions">
-      <button class="mini" data-move="top" data-id="${esc(item.id)}" ${index === 1 ? "disabled" : ""}>⤒ 提前</button>
-      <button class="mini" data-move="up" data-id="${esc(item.id)}" ${index <= 1 ? "disabled" : ""}>↑ 上移</button>
-      <button class="mini" data-move="down" data-id="${esc(item.id)}" ${isLast ? "disabled" : ""}>↓ 下移</button>
-      <button class="mini danger" data-del="${esc(item.id)}">✕ 移出队列</button>
+      <button class="mini" data-move="top" data-id="${esc(item.id)}" ${index === 1 ? "disabled" : ""}>${esc(t("admin.btn.top"))}</button>
+      <button class="mini" data-move="up" data-id="${esc(item.id)}" ${index <= 1 ? "disabled" : ""}>${esc(t("admin.btn.up"))}</button>
+      <button class="mini" data-move="down" data-id="${esc(item.id)}" ${isLast ? "disabled" : ""}>${esc(t("admin.btn.down"))}</button>
+      <button class="mini danger" data-del="${esc(item.id)}">${esc(t("admin.btn.remove"))}</button>
     </div>`;
   } else if (controls === "history") {
-    row = `<div class="actions"><button class="mini" data-rerequest="${esc(item.id)}">↻ 再点一次</button></div>`;
+    row = `<div class="actions"><button class="mini" data-rerequest="${esc(item.id)}">${esc(t("admin.btn.rerequest"))}</button></div>`;
   }
   return `<div class="card ${now ? "now" : next ? "next" : ""}">
     <div class="title">${idx}${tag}${label(item)}</div>
-    <div class="meta"><span>点歌人：${esc(item.requested_by)}</span><span>${item.duration_s ? fmtDur(item.duration_s) : ""}</span></div>
+    <div class="meta"><span>${esc(t("card.requested_by", { by: item.requested_by }))}</span><span>${item.duration_s ? fmtDur(item.duration_s) : ""}</span></div>
     ${row}
   </div>`;
 }
 
 function render(state) {
+  lastState = state;
   $("now").innerHTML = state.current
     ? card(state.current, { now: true })
-    : `<div class="empty">（空闲中，等待点歌）</div>`;
+    : `<div class="empty">${t("empty.now")}</div>`;
   $("queue").innerHTML = state.queue.length
     ? state.queue.map((i, idx) => card(i, {
         index: idx + 1,
@@ -156,12 +171,12 @@ function render(state) {
         next: idx === 0,
         controls: "queue",
       })).join("")
-    : `<div class="empty">队列空空。</div>`;
+    : `<div class="empty">${t("admin.empty.queue")}</div>`;
   // Oldest first with sequence numbers, matching the request page; 1 is
   // the first song ever played. History cards offer one-tap re-request.
   $("history").innerHTML = state.history.length
     ? [...state.history].reverse().map((h, idx) => card(h, { index: idx + 1, controls: "history" })).join("")
-    : `<div class="empty">还没有播过。</div>`;
+    : `<div class="empty">${t("empty.history")}</div>`;
   const box = $("allowQueuedDuplicates");
   if (box.checked !== !!state.config.allowQueuedDuplicates) box.checked = !!state.config.allowQueuedDuplicates;
   const fairBox = $("oneSongPerGuest");
@@ -170,22 +185,22 @@ function render(state) {
 
 /* Click handling for the queue action buttons. */
 document.addEventListener("click", async (e) => {
-  const t = e.target;
+  const el = e.target;
   try {
-    if (t.dataset.del) {
-      await mutate("/api/delete", { id: t.dataset.del });
-    } else if (t.dataset.move === "up" || t.dataset.move === "down" || t.dataset.move === "top") {
-      await mutate("/api/reorder", { id: t.dataset.id, direction: t.dataset.move });
-    } else if (t.dataset.rerequest) {
-      await mutate("/api/rerequest", { id: t.dataset.rerequest, by: "管理员" });
-    } else if (t.id === "skip") {
+    if (el.dataset.del) {
+      await mutate("/api/delete", { id: el.dataset.del });
+    } else if (el.dataset.move === "up" || el.dataset.move === "down" || el.dataset.move === "top") {
+      await mutate("/api/reorder", { id: el.dataset.id, direction: el.dataset.move });
+    } else if (el.dataset.rerequest) {
+      await mutate("/api/rerequest", { id: el.dataset.rerequest, by: "管理员" });
+    } else if (el.id === "skip") {
       await mutate("/api/skip");
     } else {
       return;
     }
     await refresh();
   } catch (err) {
-    alert("操作失败：" + err.message);
+    alert(t("admin.alert_action_failed", { e: err.message }));
   }
 });
 
@@ -193,7 +208,7 @@ $("allowQueuedDuplicates").addEventListener("change", async (e) => {
   try {
     await mutate("/api/config", { allowQueuedDuplicates: e.target.checked });
   } catch (err) {
-    alert("保存失败：" + err.message);
+    alert(t("admin.alert_save_failed", { e: err.message }));
     e.target.checked = !e.target.checked;
   }
 });
@@ -202,7 +217,7 @@ $("oneSongPerGuest").addEventListener("change", async (e) => {
   try {
     await mutate("/api/config", { oneSongPerGuest: e.target.checked });
   } catch (err) {
-    alert("保存失败：" + err.message);
+    alert(t("admin.alert_save_failed", { e: err.message }));
     e.target.checked = !e.target.checked;
   }
 });
@@ -219,7 +234,13 @@ function reconnect() {
   es = new EventSource(BASE + "/api/events");
   es.addEventListener("state", (e) => render(JSON.parse(e.data)));
 }
-reconnect();
+
+/* Boot: resolve language first (render needs t()), then talk to the
+   server. A language switch re-renders the last known state. */
+setOnLangSwitch(() => {
+  if (lastState) render(lastState);
+});
+initI18n(reconnect);
 
 /* Same background-tab resilience as the request page: re-sync when the
    tab becomes visible, plus a light poll while visible. */
