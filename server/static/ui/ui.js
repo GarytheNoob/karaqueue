@@ -146,10 +146,12 @@ function enhanceMarquee(root = document) {
 }
 
 /* --- Short toasts -----------------------------------------------------
- * Page-wide transient notices. max 3 on screen, click dismisses, error
- * type lingers longer. Text comes from the existing msg.* keys. */
+ * Page-wide transient notices. Text is passed in ALREADY translated
+ * (t() on this side, a raw server message on that side), so both
+ * localized keys and server-composed sentences fit one API. Max 3 on
+ * screen, click dismisses, errors linger longer. */
 let toastHost = null;
-function showToast(type, key, vars) {
+function showToast(type, text) {
   if (!toastHost) {
     toastHost = document.createElement("div");
     toastHost.id = "toasts";
@@ -158,9 +160,8 @@ function showToast(type, key, vars) {
   }
   const el = document.createElement("div");
   el.className = `toast ${type}`;
-  el.dataset.key = key;
+  el.textContent = text;
   type === "fail" ? el.setAttribute("role", "alert") : el.setAttribute("role", "status");
-  el.textContent = t(key, vars);
   toastHost.appendChild(el);
   while (toastHost.children.length > 3) toastHost.firstElementChild.remove();
   requestAnimationFrame(() => el.classList.add("in"));

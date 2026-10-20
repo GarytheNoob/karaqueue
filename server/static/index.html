@@ -47,8 +47,6 @@
   }
   button:disabled { opacity: .5; cursor: not-allowed; }
   input:disabled { opacity: .5; }
-  .msg { min-height: 20px; font-size: 13px; color: #f66; margin: 2px 0; }
-  .msg.ok { color: #5d5; }
   .card {
     background: #17171d; border: 1px solid #26262e; border-radius: 12px;
     padding: 10px 12px; margin-bottom: 8px;
@@ -95,7 +93,6 @@
       <input id="by" autocomplete="nickname" data-i18n-placeholder="index.by_placeholder" />
       <input id="input" required data-i18n-placeholder="index.input_placeholder" />
       <button id="btn" type="submit" data-i18n="index.submit">加入队列</button>
-      <div class="msg" id="msg"></div>
     </form>
 
     <a class="history-link" href="#/history"><span data-i18n="index.history_link">已播历史</span> <span id="historyCount"></span> ›</a>
@@ -144,7 +141,6 @@
 window.I18N_TITLE_KEY = "index.title";
 const $ = (id) => document.getElementById(id);
 const byInput = $("by");
-const msg = $("msg");
 
 // Persist the nickname between sessions.
 byInput.value = localStorage.getItem("karaqueue:by") || "";
@@ -235,7 +231,6 @@ $("f").addEventListener("submit", async (e) => {
   const input = $("input").value.trim();
   if (!input) return;
   $("btn").disabled = true;
-  msg.className = "msg";
   try {
     const res = await fetch("/api/submit", {
       method: "POST",
@@ -257,19 +252,17 @@ $("f").addEventListener("submit", async (e) => {
       // Render the fresh state right away so the fair-mode lock applies
       // before the next SSE frame lands.
       if (body.state) render(body.state);
-      msg.textContent = body.warning
-        ? t("msg.submitted_warning", { warning: body.warning })
-        : t("msg.submitted", { title: titleText(body.item) });
-      if (body.warning) msg.style.color = "#e0a33f";
-      else msg.style.removeProperty("color");
-      msg.classList.add(body.warning ? "" : "ok");
+      showToast(body.warning ? "warn" : "ok",
+        body.warning
+          ? t("msg.submitted_warning", { warning: body.warning })
+          : t("msg.submitted", { title: titleText(body.item) }));
       $("input").value = "";
       $("input").focus();
     } else {
-      msg.textContent = body.message || t("msg.submit_failed");
+      showToast("fail", body.message || t("msg.submit_failed"));
     }
   } catch (err) {
-    msg.textContent = t("msg.submit_error", { e: err.message || err });
+    showToast("fail", t("msg.submit_error", { e: err.message || err }));
   } finally {
     // Re-enable for the next submit; fair-mode lockout (if any) is
     // re-applied immediately from the latest known state.
@@ -285,7 +278,6 @@ $("f").addEventListener("submit", async (e) => {
 document.addEventListener("click", async (e) => {
   const id = e.target?.dataset?.withdraw;
   if (!id) return;
-  msg.className = "msg";
   try {
     const res = await fetch("/api/withdraw", {
       method: "POST",
@@ -295,13 +287,12 @@ document.addEventListener("click", async (e) => {
     const body = await res.json().catch(() => null);
     if (res.ok && body?.ok) {
       if (body.state) render(body.state);
-      msg.textContent = t("msg.withdrawn", { title: body.item.part || titleText(body.item) });
-      msg.classList.add("ok");
+      showToast("ok", t("msg.withdrawn", { title: body.item.part || titleText(body.item) }));
     } else {
-      msg.textContent = (body && body.message) || t("msg.withdraw_failed");
+      showToast("fail", (body && body.message) || t("msg.withdraw_failed"));
     }
   } catch (err) {
-    msg.textContent = t("msg.withdraw_error", { e: err.message || err });
+    showToast("fail", t("msg.withdraw_error", { e: err.message || err }));
   }
 });
 

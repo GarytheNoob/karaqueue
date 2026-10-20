@@ -259,7 +259,7 @@ document.addEventListener("click", async (e) => {
     }
     await refresh();
   } catch (err) {
-    showToast("fail", "admin.alert_action_failed", { e: err.message });
+    showToast("fail", t("admin.alert_action_failed", { e: err.message }));
   }
 });
 
@@ -274,7 +274,7 @@ for (const [id, key] of switchIds) {
       await mutate("/api/config", { [key]: next });
     } catch (err) {
       el.setAttribute("aria-checked", String(!next));
-      showToast("fail", "admin.alert_save_failed", { e: err.message });
+      showToast("fail", t("admin.alert_save_failed", { e: err.message }));
     }
   });
 }
@@ -351,7 +351,7 @@ function endDrag(commit) {
   mutate("/api/reorder", { id, index: d.target })
     .then(() => refresh())
     .catch(async (err) => {
-      showToast("fail", "admin.alert_action_failed", { e: err.message });
+      showToast("fail", t("admin.alert_action_failed", { e: err.message }));
       await refresh();
     });
 }
