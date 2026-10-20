@@ -30,7 +30,8 @@
  *   POST /api/config      -> { allowQueuedDuplicates, oneSongPerGuest: boolean }
  *   POST /api/skip        -> skip the current track
  *   POST /api/delete      -> { id }; remove a queued track
- *   POST /api/reorder     -> { id, direction: "up"|"down" }
+ *   POST /api/reorder     -> { id, direction: "up"|"down" } or
+ *                            { id, index: absolute 0-based slot }
  *
  * Persistence: server/queue.json (in-memory state, written atomically).
  * User-facing server strings (submit errors, warnings) are translated
@@ -972,6 +973,21 @@ function reorderQueued(id, direction) {
   return { ok: true };
 }
 
+/** Drop a queued item onto an absolute slot (drag & drop, admin). The
+ *  index is clamped into the queue, so the client never has to guess. */
+function reorderQueuedTo(id, index) {
+  const idx = state.queue.findIndex((i) => i.id === id);
+  if (idx < 0) return { ok: false, code: "srv.reorder_not_in_queue" };
+  const target = Math.max(0, Math.min(state.queue.length - 1, Number(index)));
+  if (target === idx) return { ok: true }; // dropped in place
+  const [item] = state.queue.splice(idx, 1);
+  state.queue.splice(target, 0, item);
+  state.revision += 1;
+  saveState();
+  broadcast();
+  return { ok: true };
+}
+
 /** Change an admin config flag. */
 function setConfig(patch) {
   state.config = { ...state.config, ...patch };
@@ -1389,11 +1405,19 @@ async function routeAdmin(req, res, url, pathname) {
 
   if (req.method === "POST" && pathname === "/api/reorder") {
     const body = await readJsonBody(req);
-    const direction = ["up", "down", "top"].includes(body.direction) ? body.direction : null;
-    if (!direction) {
-      return sendJson(res, 400, { ok: false, message: 'direction must be "up", "down" or "top"' });
+    let result;
+    if (body.index !== undefined) {
+      if (!Number.isInteger(body.index)) {
+        return sendJson(res, 400, { ok: false, message: "index must be an integer when given" });
+      }
+      result = reorderQueuedTo(String(body.id ?? ""), body.index);
+    } else {
+      const direction = ["up", "down", "top"].includes(body.direction) ? body.direction : null;
+      if (!direction) {
+        return sendJson(res, 400, { ok: false, message: 'direction must be "up", "down" or "top" (or pass an integer index)' });
+      }
+      result = reorderQueued(String(body.id ?? ""), direction);
     }
-    const result = reorderQueued(String(body.id ?? ""), direction);
     if (!result.ok) {
       return sendJson(res, 404, {
         ...result,

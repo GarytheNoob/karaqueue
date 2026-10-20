@@ -43,13 +43,48 @@
   .tag.next { background: #e0a33f; color: #2b1d00; }
   .tag.done { background: #444; color: #aaa; }
   .card.next { border-color: #e0a33f; }
+  /* Queue cards are flex rows: grip | body | remove. */
+  .qcard { display: flex; align-items: center; gap: 4px; }
+  .qcard .qbody { flex: 1; min-width: 0; }
+  .qcard .xbtn { flex: none; padding: 6px 8px; }
+  .grip {
+    align-self: stretch; width: 22px; flex: 1 0 22px; max-width: 26px;
+    border: 0; background: #1c1c22; border-radius: 8px; cursor: grab;
+    padding: 0; touch-action: none; min-height: 52px;
+  }
+  .grip::before {
+    content: ""; display: block; height: 34px; margin: auto; width: 14px;
+    background-image: radial-gradient(#5a6070 1.7px, transparent 2px);
+    background-size: 7px 10px; background-position: center; background-repeat: repeat-y;
+  }
+  .grip:hover { background: #22222b; }
+  .grip:active { cursor: grabbing; background: #2a2a35; }
+  .grip:focus-visible { box-shadow: 0 0 0 2px #58a6ff55; outline: none; }
+  .grip[aria-disabled="true"] { opacity: .3; cursor: default; }
+  .qcard.dragging { transition: none; position: relative; box-shadow: 0 10px 24px rgba(0,0,0,.5); opacity: .95; }
+  .qcard { transition: transform .15s ease; }
   .idx { color: #67718a; font-size: 12px; font-weight: 600; margin-right: 7px; font-variant-numeric: tabular-nums; }
   .empty { color: #666; font-size: 13px; padding: 6px 2px; }
   .actions { margin-top: 8px; display: flex; gap: 6px; }
   .configbox { background: #17171d; border: 1px solid #26262e; border-radius: 12px; padding: 12px; font-size: 14px; }
   .configbox + .configbox { margin-top: 10px; }
-  .configbox input { width: 18px; height: 18px; accent-color: #2f6fed; }
-  .configbox .head { display: flex; gap: 10px; align-items: center; }
+  .configbox .head { display: grid; grid-template-columns: 1fr auto; gap: 10px; align-items: center; }
+  .configbox .head label { min-width: 0; }
+  /* Toggle switch: track + knob, green when on. The knob's soft drop
+   * shadow is the only skeuomorphism on the page. */
+  .switch {
+    position: relative; width: 42px; height: 24px; flex: none;
+    border-radius: 999px; background: #26262e; border: 1px solid #33333d;
+    cursor: pointer; transition: background .15s ease, border-color .15s ease; padding: 0;
+  }
+  .switch::after {
+    content: ""; position: absolute; top: 2px; left: 2px; width: 18px; height: 18px;
+    border-radius: 50%; background: #7c8394; box-shadow: 0 1px 3px rgba(0,0,0,.5);
+    transition: transform .15s ease, background .15s ease;
+  }
+  .switch[aria-checked="true"] { background: #2fa25c; border-color: #2fa25c; }
+  .switch[aria-checked="true"]::after { transform: translateX(18px); background: #fff; }
+  .switch:focus-visible { box-shadow: 0 0 0 2px #58a6ff55; outline: none; }
   .configbox .desc { color: #778; font-size: 12px; margin-top: 6px; line-height: 1.5; }
   .hint { color: #778; font-size: 12px; margin-top: 6px; line-height: 1.5; }
   .desc[data-i18n] { white-space: pre-line; }
@@ -72,16 +107,16 @@
   <h2 data-i18n="admin.rules_head">点歌规则</h2>
   <div class="configbox">
     <div class="head">
-      <input type="checkbox" id="allowQueuedDuplicates" />
       <label for="allowQueuedDuplicates" data-i18n="admin.dup_label">允许队列中重复点同一首歌</label>
+      <button type="button" class="switch" id="allowQueuedDuplicates" role="switch" aria-checked="false"></button>
     </div>
     <div class="desc" data-i18n="admin.dup_desc">关闭：同一首歌重复提交会被拒绝（正在播放/已在队列中）。
 开启：同一首歌可以在排队里出现多次。</div>
   </div>
   <div class="configbox">
     <div class="head">
-      <input type="checkbox" id="oneSongPerGuest" />
       <label for="oneSongPerGuest" data-i18n="admin.fair_label">公平轮唱 · 每人限点一首</label>
+      <button type="button" class="switch" id="oneSongPerGuest" role="switch" aria-checked="false"></button>
     </div>
     <div class="desc" data-i18n="admin.fair_desc">开启后每人（按浏览器 Cookie 识别，不受改昵称影响）同时只能有一首在唱或在排，等自己那首唱完才能再点；被锁定期间，点歌页上该客人的「加入队列」按钮置灰、昵称输入框锁定。</div>
   </div>
@@ -130,6 +165,12 @@ const BASE = `${location.origin}`;
 /* Last state seen, kept so a language switch can re-render it. */
 let lastState = null;
 
+/* The two rule switches, rendered and reconciled from server state. */
+const switchIds = [
+  ["allowQueuedDuplicates", "allowQueuedDuplicates"],
+  ["oneSongPerGuest", "oneSongPerGuest"],
+];
+
 async function mutate(path, body) {
   const res = await fetch(BASE + path, {
     method: "POST",
@@ -142,7 +183,7 @@ async function mutate(path, body) {
   return data;
 }
 
-function card(item, { now = false, next = false, index = 0, isLast = false, controls = null } = {}) {
+function card(item, { now = false, next = false, index = 0, controls = null } = {}) {
   const idx = index ? `<span class="idx">${index}.</span>` : "";
   const tag = now
     ? `<span class="tag">NOW</span>`
@@ -155,12 +196,20 @@ function card(item, { now = false, next = false, index = 0, isLast = false, cont
   if (controls === "queue") {
     row = `<div class="actions">
       <button class="mini" data-move="top" data-id="${esc(item.id)}" ${index === 1 ? "disabled" : ""}>${esc(t("admin.btn.top"))}</button>
-      <button class="mini" data-move="up" data-id="${esc(item.id)}" ${index <= 1 ? "disabled" : ""}>${esc(t("admin.btn.up"))}</button>
-      <button class="mini" data-move="down" data-id="${esc(item.id)}" ${isLast ? "disabled" : ""}>${esc(t("admin.btn.down"))}</button>
-      <button class="mini danger" data-del="${esc(item.id)}">${esc(t("admin.btn.remove"))}</button>
     </div>`;
   } else if (controls === "history") {
     row = `<div class="actions"><button class="mini" data-rerequest="${esc(item.id)}">${esc(t("admin.btn.rerequest"))}</button></div>`;
+  }
+  if (controls === "queue") {
+    return `<div class="card qcard ${next ? "next" : ""}" data-qid="${esc(item.id)}">
+      <button class="grip" type="button" aria-label="${esc(t("admin.drag_hand"))}" ${lastState && lastState.queue.length < 2 ? 'aria-disabled="true"' : ""}></button>
+      <div class="qbody">
+        <div class="title">${idx}${tag}${label(item)}</div>
+        <div class="meta"><span>${esc(t("card.requested_by", { by: item.requested_by }))}</span><span>${item.duration_s ? fmtDur(item.duration_s) : ""}</span></div>
+        ${row}
+      </div>
+      <button class="mini danger xbtn" data-del="${esc(item.id)}" title="${esc(t("admin.btn.remove"))}">✕</button>
+    </div>`;
   }
   return `<div class="card ${now ? "now" : next ? "next" : ""}">
     <div class="title">${idx}${tag}${label(item)}</div>
@@ -177,7 +226,6 @@ function render(state) {
   $("queue").innerHTML = state.queue.length
     ? state.queue.map((i, idx) => card(i, {
         index: idx + 1,
-        isLast: idx === state.queue.length - 1,
         next: idx === 0,
         controls: "queue",
       })).join("")
@@ -187,10 +235,10 @@ function render(state) {
   $("history").innerHTML = state.history.length
     ? [...state.history].reverse().map((h, idx) => card(h, { index: idx + 1, controls: "history" })).join("")
     : `<div class="empty">${t("empty.history")}</div>`;
-  const box = $("allowQueuedDuplicates");
-  if (box.checked !== !!state.config.allowQueuedDuplicates) box.checked = !!state.config.allowQueuedDuplicates;
-  const fairBox = $("oneSongPerGuest");
-  if (fairBox.checked !== !!state.config.oneSongPerGuest) fairBox.checked = !!state.config.oneSongPerGuest;
+  // Server state wins: reconcile the two switches from what arrived.
+  for (const [id, key] of switchIds) {
+    $(id).setAttribute("aria-checked", String(!!state.config[key]));
+  }
   enhanceMarquee();
 }
 
@@ -200,8 +248,8 @@ document.addEventListener("click", async (e) => {
   try {
     if (el.dataset.del) {
       await mutate("/api/delete", { id: el.dataset.del });
-    } else if (el.dataset.move === "up" || el.dataset.move === "down" || el.dataset.move === "top") {
-      await mutate("/api/reorder", { id: el.dataset.id, direction: el.dataset.move });
+    } else if (el.dataset.move === "top") {
+      await mutate("/api/reorder", { id: el.dataset.id, direction: "top" });
     } else if (el.dataset.rerequest) {
       await mutate("/api/rerequest", { id: el.dataset.rerequest, by: "管理员" });
     } else if (el.id === "skip") {
@@ -211,32 +259,119 @@ document.addEventListener("click", async (e) => {
     }
     await refresh();
   } catch (err) {
-    alert(t("admin.alert_action_failed", { e: err.message }));
+    showToast("fail", "admin.alert_action_failed", { e: err.message });
   }
 });
 
-$("allowQueuedDuplicates").addEventListener("change", async (e) => {
-  try {
-    await mutate("/api/config", { allowQueuedDuplicates: e.target.checked });
-  } catch (err) {
-    alert(t("admin.alert_save_failed", { e: err.message }));
-    e.target.checked = !e.target.checked;
-  }
-});
-
-$("oneSongPerGuest").addEventListener("change", async (e) => {
-  try {
-    await mutate("/api/config", { oneSongPerGuest: e.target.checked });
-  } catch (err) {
-    alert(t("admin.alert_save_failed", { e: err.message }));
-    e.target.checked = !e.target.checked;
-  }
-});
+/* Rule switches: flip immediately (optimistic), let the server state
+ * correct us, and roll the knob back when the save fails. */
+for (const [id, key] of switchIds) {
+  $(id).addEventListener("click", async (e) => {
+    const el = e.currentTarget;
+    const next = el.getAttribute("aria-checked") !== "true";
+    el.setAttribute("aria-checked", String(next));
+    try {
+      await mutate("/api/config", { [key]: next });
+    } catch (err) {
+      el.setAttribute("aria-checked", String(!next));
+      showToast("fail", "admin.alert_save_failed", { e: err.message });
+    }
+  });
+}
 
 async function refresh() {
   const res = await fetch(BASE + "/api/state");
   render(await res.json());
 }
+
+/* --- Drag to reorder --------------------------------------------------
+ * Pointer-based (mouse/pen/touch) on the grip handle. While dragging,
+ * the held card follows the pointer and the siblings glide out of the
+ * way with small transforms; on drop the DOM order is corrected and
+ * the new slot goes to /api/reorder { id, index }. Escape cancels.
+ * Keyboard users press ArrowUp/ArrowDown on the focused grip. */
+let drag = null;
+
+function queueRows() {
+  return [...$("queue").querySelectorAll(".qcard")];
+}
+
+function gripDisabled(grip) {
+  return grip.getAttribute("aria-disabled") === "true";
+}
+
+document.addEventListener("pointerdown", (e) => {
+  const grip = e.target.closest?.(".grip");
+  if (!grip || gripDisabled(grip) || drag) return;
+  const list = queueRows();
+  if (list.length < 2) return;
+  e.preventDefault();
+  drag = {
+    cardEl: grip.closest(".qcard"),
+    list,
+    rects: list.map((el) => el.getBoundingClientRect()),
+    origin: list.indexOf(grip.closest(".qcard")),
+    startClientY: e.clientY,
+    target: list.indexOf(grip.closest(".qcard")),
+  };
+  drag.slot = drag.rects[1].top - drag.rects[0].top || (drag.rects[0].height + 8);
+  drag.cardEl.classList.add("dragging");
+});
+
+document.addEventListener("pointermove", (e) => {
+  if (!drag) return;
+  const originRect = drag.rects[drag.origin];
+  const dy = e.clientY - drag.startClientY;
+  drag.cardEl.style.transform = `translateY(${dy}px) rotate(1deg) scale(1.01)`;
+  drag.cardEl.style.zIndex = "5";
+  const offset = Math.round((e.clientY - (originRect.top + originRect.height / 2)) / drag.slot);
+  drag.target = Math.max(0, Math.min(drag.list.length - 1, drag.origin + offset));
+  drag.list.forEach((el, i) => {
+    if (el === drag.cardEl) return;
+    const shift = (i > drag.origin && i <= drag.target) ? -drag.slot
+      : (i < drag.origin && i >= drag.target) ? drag.slot : 0;
+    el.style.transform = shift ? `translateY(${shift}px)` : "";
+  });
+});
+
+function endDrag(commit) {
+  if (!drag) return;
+  const d = drag;
+  drag = null;
+  d.list.forEach((el) => {
+    el.style.transform = "";
+    el.style.zIndex = "";
+  });
+  d.cardEl.classList.remove("dragging");
+  if (!commit || d.target === d.origin) return;
+  // Optimistic DOM reorder; the server's authoritative broadcast follows.
+  if (d.target > d.origin) d.list[d.target].after(d.cardEl);
+  else d.list[d.target].before(d.cardEl);
+  const id = d.cardEl.dataset.qid;
+  mutate("/api/reorder", { id, index: d.target })
+    .then(() => refresh())
+    .catch(async (err) => {
+      showToast("fail", "admin.alert_action_failed", { e: err.message });
+      await refresh();
+    });
+}
+
+document.addEventListener("pointerup", () => endDrag(true));
+document.addEventListener("pointercancel", () => endDrag(false));
+
+/* Keyboard reorder on the grip itself: focus it, press ↑ / ↓. */
+document.addEventListener("keydown", (e) => {
+  const grip = e.target.closest?.(".grip");
+  if (!grip || gripDisabled(grip)) return;
+  if (e.key === "ArrowUp" || e.key === "ArrowDown") {
+    e.preventDefault();
+    mutate("/api/reorder", { id: grip.closest(".qcard").dataset.qid, direction: e.key === "ArrowUp" ? "up" : "down" })
+      .then(() => refresh())
+      .catch((err) => showToast("fail", "admin.alert_action_failed", { e: err.message }));
+  } else if (e.key === "Escape" && drag) {
+    endDrag(false);
+  }
+});
 
 let es = null;
 function reconnect() {
