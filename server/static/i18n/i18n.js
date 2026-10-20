@@ -24,6 +24,7 @@ const I18N_FALLBACK = "zh-CN";
 const I18N_LANGS = [
   { code: "zh-CN", label: "中文" },
   { code: "en", label: "English" },
+  { code: "zh-Hant", label: "繁體中文" },
 ];
 
 /* Copy of the active language (populated by loadLang). Before it
