@@ -267,7 +267,22 @@ function saveState() {
   // Atomic write: write a temp file first, then rename over the target.
   const tmp = `${DATA_FILE}.tmp`;
   fs.writeFileSync(tmp, JSON.stringify(state, null, 2));
-  fs.renameSync(tmp, DATA_FILE);
+  // Windows antiviruses and the search indexer briefly hold freshly
+  // written files, making the rename throw EPERM/EACCES; absorb those
+  // transient hits with a couple of retries before giving up.
+  for (let attempt = 0; ; attempt++) {
+    try {
+      fs.renameSync(tmp, DATA_FILE);
+      return;
+    } catch (err) {
+      if (attempt < 2 && (err.code === "EPERM" || err.code === "EACCES")) {
+        // Synchronous park: the main thread sleeps 50ms, then retries.
+        Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 50);
+        continue;
+      }
+      throw err;
+    }
+  }
 }
 
 /* ------------------------------------------------------------------ */
@@ -296,6 +311,9 @@ function loadProxyConfig() {
   }
   if (!activeProxy && process.platform === "darwin") {
     activeProxy = macOSSystemProxy();
+  }
+  if (!activeProxy && process.platform === "win32") {
+    activeProxy = windowsSystemProxy();
   }
   if (activeProxy) {
     console.log(
@@ -335,6 +353,42 @@ function macOSSystemProxy() {
     }
   } catch {
     /* headless or no scutil: stay direct */
+  }
+  return null;
+}
+
+/** Windows "system proxy" is per-user WinINET state in the registry
+ *  (HKCU\...\Internet Settings) - proxy tools like Clash flip it, env
+ *  vars are usually unset. reg keeps the value names and types in
+ *  English on every locale, so plain parses hold up. */
+function windowsSystemProxy() {
+  try {
+    const out = decodeConsoleOutput(execFileSync("reg", [
+      "query",
+      "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settings",
+    ], { timeout: 3000 }));
+    const enabled = /ProxyEnable\s+REG_DWORD\s+0x([0-9a-fA-F]+)/i.exec(out)?.[1];
+    const raw = out.match(/ProxyServer\s+REG_SZ\s+(\S+)/i)?.[1];
+    if (Number(enabled, 16) === 1 && raw) {
+      // A bare "host:port" covers every protocol; otherwise WinINET
+      // stores a "http=...;https=...;socks=..." list and we prefer the
+      // HTTPS entry (our tunnel speaks CONNECT, which it answers too).
+      let pick = raw;
+      if (raw.includes("=")) {
+        const parts = {};
+        for (const piece of raw.split(";")) {
+          const [key, val] = piece.split("=", 2).map((s) => s.trim());
+          if (key && val) parts[key.toLowerCase()] = val;
+        }
+        pick = parts.https ?? parts.http ?? null;
+      }
+      if (pick) return parseProxy(pick, "Windows system proxy");
+    }
+    if (/AutoConfigURL\s+REG_SZ/i.test(out)) {
+      console.log("[karaqueue] system proxy is a PAC script (not supported); cross-network requests stay direct");
+    }
+  } catch {
+    /* no registry access or reg missing (= not Windows): stay direct */
   }
   return null;
 }
@@ -1152,6 +1206,19 @@ function lanIPv4s() {
   return out;
 }
 
+/** Console tools on Windows emit whatever codepage the console runs
+ *  (GBK/936 on zh-CN systems), so capture raw bytes and decode by trying
+ *  UTF-8 first, then GBK when the UTF-8 pass shows replacement chars. */
+function decodeConsoleOutput(buf) {
+  const utf8 = Buffer.from(buf).toString("utf8");
+  if (!utf8.includes("\uFFFD")) return utf8;
+  try {
+    return new TextDecoder("gbk").decode(buf); // full-ICU builds only
+  } catch {
+    return utf8; // ICU-lite build: keep the lossy decode
+  }
+}
+
 /** Best-effort Wi-Fi SSID. Host systems guard it behind privacy
  *  permissions: macOS 15+ answers "<redacted>" unless the process has
  *  Location permission. Nulls are reported as "not detected" upstream. */
@@ -1172,6 +1239,15 @@ function hostSsid() {
     } else if (process.platform === "linux") {
       const ssid = execFileSync("iwgetid", ["-r"], { encoding: "utf8", timeout: 3000 }).trim();
       if (ssid) return ssid;
+    } else if (process.platform === "win32") {
+      // "BSSID" lines cannot match: the regex anchors SSID at the start
+      // of the line. Labels stay "SSID" even on localized Windows; when
+      // they do not, or no Wi-Fi NIC exists, we report "not detected".
+      const out = decodeConsoleOutput(
+        execFileSync("netsh", ["wlan", "show", "interfaces"], { timeout: 3000 }),
+      );
+      const row = out.match(/^\s+SSID\s*:\s*(.+?)\s*$/m);
+      if (row?.[1]) return row[1];
     }
   } catch {
     /* missing tooling or no association: fall through to "not detected" */
