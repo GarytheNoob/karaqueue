@@ -93,39 +93,116 @@ function savedLang() {
   }
 }
 
+/* --- Segmented language switcher -------------------------------------
+ * A sliding pill (En | 简 | 繁) instead of a system <select>. Captions
+ * are fixed glyphs - localizing the control that changes the language
+ * makes no sense. Display order below is fixed by design, independent
+ * of I18N_LANGS registration order. */
+const I18N_SWITCH_ORDER = ["en", "zh-CN", "zh-Hant"];
+const I18N_SWITCH_CAPTION = { en: "En", "zh-CN": "简", "zh-Hant": "繁" };
+const I18N_SWITCH_WIDTH = 36; // px per segment, mirrors the CSS
+
+function switchLangStyles() {
+  return `
+.lang-switch {
+  position: relative; display: inline-flex; padding: 3px;
+  background: #1c1c22; border: 1px solid #33333d; border-radius: 999px;
+}
+.lang-switch .ls-thumb {
+  position: absolute; top: 3px; bottom: 3px; left: 3px; width: ${I18N_SWITCH_WIDTH}px;
+  border-radius: 999px; background: #2f6fed;
+  transition: transform .18s ease;
+}
+.lang-switch button {
+  position: relative; z-index: 1; border: 0; background: transparent;
+  width: ${I18N_SWITCH_WIDTH}px; height: 24px; padding: 0;
+  font-size: 12px; color: #99a; border-radius: 999px;
+  cursor: pointer; font-family: inherit;
+}
+.lang-switch button[aria-pressed="true"] { color: #fff; font-weight: 600; }
+.lang-switch button:focus-visible { outline: none; box-shadow: 0 0 0 2px #58a6ff55; border-radius: 999px; }`;
+}
+
+function renderLangSwitch(host, active) {
+  if (!host.firstElementChild) {
+    host.className = "lang-switch";
+    host.setAttribute("role", "group");
+    host.setAttribute("aria-label", "Language");
+    const thumb = document.createElement("span");
+    thumb.className = "ls-thumb";
+    host.appendChild(thumb);
+    for (const code of I18N_SWITCH_ORDER) {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.dataset.code = code;
+      b.textContent = I18N_SWITCH_CAPTION[code];
+      b.addEventListener("click", () => switchLang(code));
+      host.appendChild(b);
+    }
+  }
+  const idx = Math.max(0, I18N_SWITCH_ORDER.indexOf(active));
+  host.querySelector(".ls-thumb").style.transform = `translateX(${idx * I18N_SWITCH_WIDTH}px)`;
+  host.querySelectorAll("button").forEach((b) =>
+    b.setAttribute("aria-pressed", String(b.dataset.code === active)));
+}
+
+/* Shared switch flow for every control: load the pack, persist the
+   choice, and re-point the highlight at the language that is actually
+   active - on a failed pack the previous language stays put. */
+async function switchLang(next) {
+  try {
+    const applied = await loadLang(next);
+    if (!applied) return; // a newer switch already owns the page
+    try {
+      localStorage.setItem(I18N_STORAGE_KEY, next);
+    } catch {}
+  } catch (err) {
+    /* Keep the previous language when the pack cannot be loaded. */
+    console.warn("[karaqueue] language pack unavailable:", next, err);
+  }
+  renderLangSwitch(document.getElementById("langSwitch"), i18nLang);
+}
+
 /* Wire the manual switcher, load the initial language, then call
    onReady() so the page starts rendering with translations in place. */
 async function initI18n(onReady) {
-  const sel = document.getElementById("lang");
-  if (sel) {
-    for (const { code, label } of I18N_LANGS) {
-      const option = document.createElement("option");
-      option.value = code;
-      option.textContent = label;
-      sel.appendChild(option);
-    }
-    sel.value = savedLang() ?? I18N_FALLBACK;
-    sel.addEventListener("change", async () => {
-      const next = sel.value;
-      try {
-        const applied = await loadLang(next);
-        if (!applied) return; // a newer switch already owns the page
-        try {
-          localStorage.setItem(I18N_STORAGE_KEY, next);
-        } catch {}
-      } catch (err) {
-        /* Keep the previous language when the pack cannot be loaded. */
-        console.warn("[karaqueue] language pack unavailable:", next, err);
-        sel.value = i18nLang;
+  let initial = I18N_FALLBACK;
+  try {
+    initial = savedLang() ?? I18N_FALLBACK;
+  } catch {}
+
+  const sw = document.getElementById("langSwitch");
+  if (sw) {
+    const style = document.createElement("style");
+    style.textContent = switchLangStyles();
+    document.head.appendChild(style);
+    renderLangSwitch(sw, initial);
+  } else {
+    // Legacy pages without the switcher keep the old <select>.
+    const sel = document.getElementById("lang");
+    if (sel) {
+      for (const { code, label } of I18N_LANGS) {
+        const option = document.createElement("option");
+        option.value = code;
+        option.textContent = label;
+        sel.appendChild(option);
       }
-    });
+      sel.value = initial;
+      sel.addEventListener("change", async () => {
+        try {
+          const applied = await loadLang(sel.value);
+          if (!applied) return;
+          try {
+            localStorage.setItem(I18N_STORAGE_KEY, sel.value);
+          } catch {}
+        } catch (err) {
+          console.warn("[karaqueue] language pack unavailable:", sel.value, err);
+          sel.value = i18nLang;
+        }
+      });
+    }
   }
 
-  let initial = (sel ? sel.value : I18N_FALLBACK) ?? I18N_FALLBACK;
-  try {
-    const saved = savedLang() ?? I18N_FALLBACK;
-    initial = saved;
-  } catch {}
   try {
     await loadLang(initial);
   } catch (err) {
@@ -137,5 +214,6 @@ async function initI18n(onReady) {
       console.warn("[karaqueue] no language pack loaded", err2);
     }
   }
+  if (sw) renderLangSwitch(sw, i18nLang);
   if (onReady) onReady();
 }

@@ -66,11 +66,7 @@
   header small { color: #666; }
   .row-head { display: flex; justify-content: space-between; align-items: baseline; }
   .row-head small { color: #666; }
-  #lang {
-    background: #1c1c22; border: 1px solid #33333d; color: #ddd;
-    border-radius: 8px; padding: 4px 6px; font-size: 13px;
-  }
-  .hdr-right { display: inline-flex; gap: 8px; align-items: center; color: #666; }
+  .hdr-right { display: inline-flex; gap: 10px; align-items: center; color: #666; }
   .side-btn {
     background: #17171d; border: 1px solid #33333d; color: #ccc;
     border-radius: 8px; padding: 4px 10px; font-size: 14px; cursor: pointer;
@@ -110,8 +106,8 @@
   <header>
     <h1 data-i18n="index.title">KaraQueue 点歌</h1>
     <small class="hdr-right">
+      <span id="langSwitch"></span>
       <button id="sideBtn" class="side-btn" aria-label="局域网接入" type="button">☰</button>
-      <select id="lang"></select>
     </small>
   </header>
 

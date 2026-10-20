@@ -45,10 +45,6 @@
   .configbox .head { display: flex; gap: 10px; align-items: center; }
   .configbox .desc { color: #778; font-size: 12px; margin-top: 6px; line-height: 1.5; }
   .hint { color: #778; font-size: 12px; margin-top: 6px; line-height: 1.5; }
-  #lang {
-    background: #1c1c22; border: 1px solid #33333d; color: #ddd;
-    border-radius: 8px; padding: 4px 6px; font-size: 13px;
-  }
   .desc[data-i18n] { white-space: pre-line; }
 </style>
 </head>
@@ -56,7 +52,7 @@
 <main>
   <div class="bar">
     <h1 data-i18n="admin.title">KaraQueue 管理后台</h1>
-    <select id="lang"></select>
+    <span id="langSwitch"></span>
   </div>
 
   <h2 data-i18n="head.now_playing">正在播放</h2>
