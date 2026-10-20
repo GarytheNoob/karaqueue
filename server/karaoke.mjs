@@ -7,6 +7,7 @@
  *   GET  /api/state       -> full state snapshot
  *   GET  /api/hostinfo    -> LAN addresses + best-effort Wi-Fi SSID
  *                            (drives the request page's sidebar QR)
+ *   GET  /ui/ui.js        -> shared browser UI helpers (fixed name)
  *   POST /api/submit      -> body { input, by, uid }; resolves input, enqueues it
  *                              (uid binds the request to the browser cookie
  *                              so fair-mode lockout survives nickname edits)
@@ -1222,14 +1223,16 @@ async function route(req, res, isAdmin = false) {
     return sendJson(res, 200, { ok: true, host: { ...lanHostInfo(), primary: primaryLanIp(req) } });
   }
 
-  // Vendored browser libs (no npm). Fixed file names only - the route
-  // never interpolates the pathname, so there is no traversal surface.
-  if (req.method === "GET" && pathname === "/vendor/qrcode.js") {
+  // Vendored browser libs and the shared UI script (no npm). Fixed
+  // file names only - the route never interpolates the pathname, so
+  // there is no traversal surface.
+  if (req.method === "GET" && (pathname === "/vendor/qrcode.js" || pathname === "/ui/ui.js")) {
+    const rel = pathname === "/ui/ui.js" ? path.join("ui", "ui.js") : path.join("vendor", "qrcode.js");
     try {
       res.writeHead(200, { "Content-Type": "text/javascript; charset=utf-8" });
-      res.end(fs.readFileSync(path.join(STATIC_DIR, "vendor", "qrcode.js")));
+      res.end(fs.readFileSync(path.join(STATIC_DIR, rel)));
     } catch {
-      sendJson(res, 404, { ok: false, message: "no vendor script qrcode.js" });
+      sendJson(res, 404, { ok: false, message: `no such static script: ${pathname}` });
     }
     return;
   }
@@ -1319,6 +1322,19 @@ async function routeAdmin(req, res, url, pathname) {
 
   const langMatch = req.method === "GET" && pathname.match(I18N_PATH_RE);
   if (langMatch) return serveI18n(res, langMatch[1], langMatch[2]);
+
+  // Shared UI script and the QR vendor lib, same fixed-name contract
+  // as the public port's /ui/ and /vendor/ routes.
+  if (req.method === "GET" && (pathname === "/ui/ui.js" || pathname === "/vendor/qrcode.js")) {
+    const rel = pathname === "/ui/ui.js" ? path.join("ui", "ui.js") : path.join("vendor", "qrcode.js");
+    try {
+      res.writeHead(200, { "Content-Type": "text/javascript; charset=utf-8" });
+      res.end(fs.readFileSync(path.join(STATIC_DIR, rel)));
+    } catch {
+      sendJson(res, 404, { ok: false, message: `no such static script: ${pathname}` });
+    }
+    return;
+  }
 
   if (req.method === "GET" && pathname === "/api/state") {
     return sendJson(res, 200, publicState());

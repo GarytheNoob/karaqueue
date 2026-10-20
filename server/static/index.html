@@ -40,7 +40,7 @@
     background: #17171d; border: 1px solid #26262e; border-radius: 12px;
     padding: 10px 12px; margin-bottom: 8px;
   }
-  .card .title { font-size: 14px; line-height: 1.4; }
+  .card .title { font-size: 14px; line-height: 1.5; display: flex; align-items: center; }
   .card .meta { font-size: 12px; color: #888; margin-top: 4px; display: flex; justify-content: space-between; }
   .card.now { border-color: #2f6fed; }
   .card.next { border-color: #e0a33f; }
@@ -156,6 +156,7 @@
 
 <script src="i18n/i18n.js"></script>
 <script src="vendor/qrcode.js"></script>
+<script src="ui/ui.js"></script>
 <script>
 "use strict";
 /* Client logic: submit + live state via SSE. Kept vanilla so the whole
@@ -181,29 +182,6 @@ const UID = (() => {
   return v;
 })();
 
-function esc(s) {
-  return String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-}
-
-/** Titles stored server-side may lack metadata (title_missing flag);
- *  each client renders its own localized suffix. */
-function titleText(item) {
-  return String(item.title ?? "") + (item.title_missing ? t("card.meta_missing") : "");
-}
-
-function fmtDur(s) {
-  if (!s) return "";
-  const m = Math.floor(s / 60), r = s % 60;
-  return `${m}:${String(r).padStart(2, "0")}`;
-}
-
-function label(item) {
-  const part = item.page_count > 1 ? ` · P${item.page}` : "";
-  // bilibili stays unmarked (the default), youtube gets a red badge.
-  const src = item.platform === "youtube" ? ` <span style="color:#d33">[YT]</span>` : "";
-  return `${esc(titleText(item))}${src}${part ? ` <span style="color:#7ab">${part}</span>` : ""}`;
-}
-
 function card(item, { now = false, next = false, index = 0, withdraw = false } = {}) {
   const part = item.page_count > 1 ? ` · P${item.page}` : "";
   // "Mine" badge (green) marks every track this browser requested,
@@ -228,7 +206,6 @@ function card(item, { now = false, next = false, index = 0, withdraw = false } =
 }
 
 let lastState = null;
-
 /* Fair rotation (admin toggle): while one of my own requests is playing or
    queued (matched by cookie uid), the submit button is greyed out and my
    nickname input is locked until that song has finished. */
@@ -259,6 +236,7 @@ function render(state) {
     ? [...state.history].reverse().map((item, idx) => card(item, { index: idx + 1 })).join("")
     : `<div class="empty">${t("empty.history")}</div>`;
   applyFairMode();
+  enhanceMarquee();
 }
 
 /* Hash-based secondary view: #/history shows the played list, anything
@@ -352,77 +330,19 @@ async function refresh() {
   render(await res.json());
 }
 
-/* --- LAN access sidebar ----------------------------------------------
- * Shows how a phone joins the party: Wi-Fi name, LAN address and a QR
- * straight to this page. Filled lazily on first open; the QR encodes
- * the address the server saw this very client come in over. */
-const sidebar = $("sidebar");
-const sideOverlay = $("sideOverlay");
-let hostData = false; // false = never loaded, null = fetch failed
-
-function setSideOpen(open) {
-  sidebar.classList.toggle("open", open);
-  sideOverlay.hidden = !open;
-  sidebar.setAttribute("aria-hidden", String(!open));
-}
-
-$("sideBtn").addEventListener("click", () => {
-  setSideOpen(true);
-  loadHostInfo();
-});
-$("sideClose").addEventListener("click", () => setSideOpen(false));
-sideOverlay.addEventListener("click", () => setSideOpen(false));
-
-function renderHostInfo() {
-  if (hostData === false) return;
-  if (!hostData) {
-    $("ssidVal").textContent = t("side.unavailable");
-    $("ipVal").textContent = t("side.unavailable");
-    return;
-  }
-  const host = hostData;
-  let primary = host.primary ?? null;
-  if (!primary && Array.isArray(host.ips)) primary = host.ips[0] ?? null;
-  $("ssidVal").textContent = host.ssid ?? t("side.unavailable");
-  $("ipVal").textContent = primary ? `${primary}:${host.port}` : t("side.unavailable");
-}
-
-async function loadHostInfo() {
-  if (hostData !== false) {
-    renderHostInfo(); // a failure re-renders in the current language
-    return;
-  }
-  try {
-    hostData = (await (await fetch("/api/hostinfo")).json()).host ?? null;
-    if (hostData) {
-      let primary = hostData.primary ?? null;
-      if (!primary && Array.isArray(hostData.ips)) primary = hostData.ips[0] ?? null;
-      if (primary) {
-        const qr = qrcode(0, "M"); // EC M: survives camera glare and dents
-        qr.addData(`http://${primary}:${hostData.port}/`);
-        qr.make();
-        $("qrBox").innerHTML = qr.createSvgTag({ cellSize: 6, margin: 4, scalable: true });
-      }
-    }
-  } catch {
-    hostData = null;
-  }
-  renderHostInfo();
-}
+/* --- LAN access sidebar lives in ui/ui.js (shared with admin). ------- */
 
 /* Language switching re-renders the dynamic parts (cards, counts,
- * fair-mode lock) in the new language. */
+ * fair-mode lock, sidebar labels) in the new language. */
 setOnLangSwitch(() => {
   if (lastState) render(lastState);
-  $("sideBtn").setAttribute("aria-label", t("side.btn"));
-  $("sideClose").setAttribute("aria-label", t("side.close"));
-  renderHostInfo();
+  refreshSidebarI18n();
 });
 
 /* Boot sequence: resolve the language first, then talk to the server. */
 initI18n(() => {
-  $("sideBtn").setAttribute("aria-label", t("side.btn"));
-  $("sideClose").setAttribute("aria-label", t("side.close"));
+  initSidebar();
+  refreshSidebarI18n();
   refresh();
   const es = new EventSource("/api/events");
   es.addEventListener("state", (e) => render(JSON.parse(e.data)));

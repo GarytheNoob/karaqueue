@@ -29,7 +29,7 @@
   button.mini:disabled { opacity: .35; cursor: default; }
   .card { background: #17171d; border: 1px solid #26262e; border-radius: 12px; padding: 10px 12px; margin-bottom: 8px; }
   .card.now { border-color: #2f6fed; }
-  .card .title { font-size: 14px; line-height: 1.4; }
+  .card .title { font-size: 14px; line-height: 1.5; display: flex; align-items: center; }
   .card .meta { font-size: 12px; color: #888; margin-top: 4px; display: flex; justify-content: space-between; }
   .tag { font-size: 11px; background: #2f6fed; color: #fff; border-radius: 4px; padding: 1px 6px; margin-right: 6px; vertical-align: 2px; }
   .tag.next { background: #e0a33f; color: #2b1d00; }
@@ -85,6 +85,8 @@
 </main>
 
 <script src="i18n/i18n.js"></script>
+<script src="vendor/qrcode.js"></script>
+<script src="ui/ui.js"></script>
 <script>
 "use strict";
 /* Admin console: delete/reorder queue items, skip, and toggle the
@@ -100,27 +102,6 @@ const BASE = `${location.origin}`;
 
 /* Last state seen, kept so a language switch can re-render it. */
 let lastState = null;
-
-function esc(s) {
-  return String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-}
-
-function fmtDur(s) {
-  if (!s) return "";
-  const m = Math.floor(s / 60), r = s % 60;
-  return `${m}:${String(r).padStart(2, "0")}`;
-}
-
-function label(item) {
-  // bilibili stays unmarked (the default), youtube gets a red badge.
-  const src = item.platform === "youtube" ? ` <span style="color:#d33">[YT]</span>` : "";
-  return esc(titleText(item)) + src + (item.page_count > 1 ? ` <span style="color:#7ab">· P${item.page}</span>` : "");
-}
-
-/** Localized missing-metadata suffix, appended by each client. */
-function titleText(item) {
-  return String(item.title ?? "") + (item.title_missing ? t("card.meta_missing") : "");
-}
 
 async function mutate(path, body) {
   const res = await fetch(BASE + path, {
@@ -183,6 +164,7 @@ function render(state) {
   if (box.checked !== !!state.config.allowQueuedDuplicates) box.checked = !!state.config.allowQueuedDuplicates;
   const fairBox = $("oneSongPerGuest");
   if (fairBox.checked !== !!state.config.oneSongPerGuest) fairBox.checked = !!state.config.oneSongPerGuest;
+  enhanceMarquee();
 }
 
 /* Click handling for the queue action buttons. */

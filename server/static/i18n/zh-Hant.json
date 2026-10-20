@@ -21,6 +21,9 @@
   "tag.played": "已播",
   "tag.skipped": "跳過",
   "card.requested_by": "點歌人：{by}",
+  "card.platform_bilibili": "嗶哩嗶哩",
+  "card.platform_youtube": "YouTube",
+  "card.platform_unknown": "未知平台",
   "index.withdraw": "✕ 撤回",
   "index.withdraw_title": "從排隊中撤回這首歌",
   "index.fair.locked": "已點一首 · 唱後再點",
@@ -79,6 +82,6 @@
   "srv.reorder_not_in_queue": "這首歌不在排隊裡",
   "srv.reorder_at_top": "它已經是隊首了",
   "srv.reorder_at_bottom": "它已經在隊尾了",
-  "srv.id_not_in_queue": "id {id} 不在排隊裡"
-  ,"srv.id_not_in_history": "id {id} 已不在已播歷史"
+  "srv.id_not_in_queue": "id {id} 不在排隊裡",
+  "srv.id_not_in_history": "id {id} 已不在已播歷史"
 }
