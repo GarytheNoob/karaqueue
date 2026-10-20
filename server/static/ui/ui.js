@@ -112,29 +112,34 @@ function titleText(item) {
 }
 
 /** One platform glyph or a neutral fallback, with a localized name as
- *  the hover/reader label. The title text itself scrolls in a .tscroll
- *  that never wraps. */
+ *  the hover/reader label. The title runs in a .tscroll that never
+ *  wraps; enhanceMarquee() appends the hidden duplicate only when the
+ *  text overflows, so short titles render as a single clean line. */
 function label(item) {
   const known = item.platform === "bilibili" || item.platform === "youtube";
   const key = known ? item.platform : "unknown";
   const name = t(known ? `card.platform_${item.platform}` : "card.platform_unknown");
   const icon = `<img class="picon" src="${PLATFORM_ICONS[key]}" alt="" title="${esc(name)}">`;
-  const text = esc(titleText(item));
-  const run = `<span class="tscroll"><span class="run"><span class="ttext">${text}</span><span class="ttext" aria-hidden="true">${text}</span></span></span>`;
+  const run = `<span class="tscroll"><span class="run"><span class="ttext">${esc(titleText(item))}</span></span></span>`;
   const part = item.page_count > 1 ? `<span class="pg">P${item.page}</span>` : "";
   return `${icon}${run}${part}`;
 }
 
-/* Measure each title once per render; only overflowing ones get an
- * animation whose duration scales with the overflow width. Devices
- * without hover (phones) toggle scrolling by tapping the title. */
+/* Measure each title once per render; only overflowing ones get their
+ * hidden duplicate appended (for the seamless loop) plus an animation
+ * whose duration scales with the overflow width. Devices without hover
+ * (phones) toggle scrolling by tapping the title. */
 function enhanceMarquee(root = document) {
   root.querySelectorAll(".tscroll").forEach((el) => {
     const run = el.firstElementChild;
     if (!run || run.dataset.marqDone) return;
     run.dataset.marqDone = "1";
-    el.closest(".card")?.classList.remove("scrolling");
-    if (run.scrollWidth <= el.clientWidth + 1) return; // fits, stay still
+    if (run.scrollWidth <= el.clientWidth + 1) return; // fits: keep one copy
+    const dup = document.createElement("span");
+    dup.className = "ttext";
+    dup.setAttribute("aria-hidden", "true");
+    dup.textContent = run.firstElementChild.textContent;
+    run.appendChild(dup);
     el.style.setProperty("--mq", `${Math.max(6000, Math.round(run.scrollWidth / 2 * 22))}ms`);
     el.closest(".card")?.addEventListener("click", (e) => {
       // Touch fallback: no hover, so a tap on the title row toggles it.
