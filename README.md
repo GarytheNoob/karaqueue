@@ -31,6 +31,8 @@ Every change travels over SSE (server-sent events): submit, skip, delete, reorde
 
 The request page opens on a phone and holds the submit form, now playing, and the queue. A second page holds the played history, oldest first with sequence numbers, where 1 is the first song of the night. Track cards use blue for NOW and amber for NEXT.
 
+A collapsible sidebar (the `☰` button in the header) shows how a phone joins: the host machine's Wi-Fi network and LAN address, plus a QR code that opens the request page. The QR encodes the address the very request arrived on, so VPN/tunnel interfaces do not break it. Recent macOS delivers the SSID only with Location permission for the server process; without it the row says "not available" and the address still carries the point.
+
 The mobile page has no skip button. Skipping is the host's job.
 
 ## Chrome Extension

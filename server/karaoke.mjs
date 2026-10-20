@@ -5,6 +5,8 @@
  * Public endpoints (PORT, default 7777):
  *   GET  /                -> song request page (static/index.html)
  *   GET  /api/state       -> full state snapshot
+ *   GET  /api/hostinfo    -> LAN addresses + best-effort Wi-Fi SSID
+ *                            (drives the request page's sidebar QR)
  *   POST /api/submit      -> body { input, by, uid }; resolves input, enqueues it
  *                              (uid binds the request to the browser cookie
  *                              so fair-mode lockout survives nickname edits)
@@ -41,6 +43,7 @@
 import http from "node:http";
 import fs from "node:fs";
 import net from "node:net";
+import os from "node:os";
 import tls from "node:tls";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
@@ -1130,6 +1133,72 @@ function serveEvents(req, res) {
   req.on("close", () => sseClients.delete(res));
 }
 
+/* ------------------------------------------------------------------ */
+/* LAN host info (request-page sidebar: SSID, addresses, QR target)    */
+/* ------------------------------------------------------------------ */
+
+let hostInfoCache = null;
+
+/** All routable IPv4 addresses of this machine's LAN interfaces. */
+function lanIPv4s() {
+  const out = [];
+  for (const list of Object.values(os.networkInterfaces())) {
+    for (const it of list ?? []) {
+      if (it.family !== "IPv4" || it.internal) continue;
+      if (/^169\.254\./.test(it.address)) continue; // link-local, useless for guests
+      out.push(it.address);
+    }
+  }
+  return out;
+}
+
+/** Best-effort Wi-Fi SSID. Host systems guard it behind privacy
+ *  permissions: macOS 15+ answers "<redacted>" unless the process has
+ *  Location permission. Nulls are reported as "not detected" upstream. */
+function hostSsid() {
+  try {
+    if (process.platform === "darwin") {
+      const ports = execFileSync("networksetup", ["-listallhardwareports"], {
+        encoding: "utf8", timeout: 3000,
+      });
+      const wifi = ports.match(/Hardware Port: Wi-Fi\nDevice: (\w+)/);
+      if (wifi) {
+        const summary = execFileSync("ipconfig", ["getsummary", wifi[1]], {
+          encoding: "utf8", timeout: 3000,
+        });
+        const ssid = (summary.match(/ SSID : (.+)/)?.[1] ?? "").trim();
+        if (ssid && ssid !== "<redacted>") return ssid;
+      }
+    } else if (process.platform === "linux") {
+      const ssid = execFileSync("iwgetid", ["-r"], { encoding: "utf8", timeout: 3000 }).trim();
+      if (ssid) return ssid;
+    }
+  } catch {
+    /* missing tooling or no association: fall through to "not detected" */
+  }
+  return null;
+}
+
+/** The address to advertise: the IPv4 the very request arrived on, so
+ *  guests connected over VPN/tunnel interfaces still get a QR that
+ *  reaches them; falls back to the first enumerated LAN IPv4. */
+function primaryLanIp(req) {
+  const a = String(req.socket.localAddress || "").replace(/^::ffff:/, "");
+  if (/^\d+\.\d+\.\d+\.\d+$/.test(a) && !/^(127\.|0\.)/.test(a)) return a;
+  return lanHostInfo().ips[0] ?? null;
+}
+
+/** Cached for a minute: guests flood this while the QR sits open, and
+ *  the underlying probes spawn subprocesses under a privacy redaction
+ *  that will not flip mid-party anyway. */
+function lanHostInfo() {
+  const now = Date.now();
+  if (hostInfoCache && now - hostInfoCache.t < 60_000) return hostInfoCache.v;
+  const v = { hostname: os.hostname(), port: PORT, ips: lanIPv4s(), ssid: hostSsid() };
+  hostInfoCache = { t: now, v };
+  return v;
+}
+
 async function route(req, res, isAdmin = false) {
   if (handlePreflight(req, res)) return;
   const url = new URL(req.url, `http://${req.headers.host}`);
@@ -1147,6 +1216,22 @@ async function route(req, res, isAdmin = false) {
 
   if (req.method === "GET" && pathname === "/api/state") {
     return sendJson(res, 200, publicState());
+  }
+
+  if (req.method === "GET" && pathname === "/api/hostinfo") {
+    return sendJson(res, 200, { ok: true, host: { ...lanHostInfo(), primary: primaryLanIp(req) } });
+  }
+
+  // Vendored browser libs (no npm). Fixed file names only - the route
+  // never interpolates the pathname, so there is no traversal surface.
+  if (req.method === "GET" && pathname === "/vendor/qrcode.js") {
+    try {
+      res.writeHead(200, { "Content-Type": "text/javascript; charset=utf-8" });
+      res.end(fs.readFileSync(path.join(STATIC_DIR, "vendor", "qrcode.js")));
+    } catch {
+      sendJson(res, 404, { ok: false, message: "no vendor script qrcode.js" });
+    }
+    return;
   }
 
   if (req.method === "GET" && pathname === "/api/events") {
