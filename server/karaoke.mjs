@@ -1323,6 +1323,12 @@ async function routeAdmin(req, res, url, pathname) {
   const langMatch = req.method === "GET" && pathname.match(I18N_PATH_RE);
   if (langMatch) return serveI18n(res, langMatch[1], langMatch[2]);
 
+  // Same hostinfo the request page uses: the admin drawer's QR points
+  // guests at the request page on the public port.
+  if (req.method === "GET" && pathname === "/api/hostinfo") {
+    return sendJson(res, 200, { ok: true, host: { ...lanHostInfo(), primary: primaryLanIp(req) } });
+  }
+
   // Shared UI script and the QR vendor lib, same fixed-name contract
   // as the public port's /ui/ and /vendor/ routes.
   if (req.method === "GET" && (pathname === "/ui/ui.js" || pathname === "/vendor/qrcode.js")) {

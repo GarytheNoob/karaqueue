@@ -53,7 +53,39 @@
   .toast.out { opacity: 0; transform: translateY(8px); }
   .toast.ok { border-left-color: #2fa25c; }
   .toast.fail { border-left-color: #f66; }
-  .toast.warn { border-left-color: #e0a33f; }`;
+  .toast.warn { border-left-color: #e0a33f; }
+
+  /* LAN-access drawer, identical on both pages. */
+  .side-btn {
+    background: #17171d; border: 1px solid #33333d; color: #ccc;
+    border-radius: 8px; padding: 4px 10px; font-size: 14px; cursor: pointer;
+  }
+  .side-btn:active { background: #26262e; }
+  #sideOverlay { position: fixed; inset: 0; background: rgba(0,0,0,.45); z-index: 40; }
+  #sideOverlay[hidden] { display: none; }
+  #sidebar {
+    position: fixed; top: 0; left: 0; bottom: 0; z-index: 41;
+    width: min(340px, 86vw); padding: 16px; overflow-y: auto;
+    background: #17171d; border-right: 1px solid #33333d;
+    transform: translateX(-102%); transition: transform .22s ease;
+  }
+  #sidebar.open { transform: translateX(0); }
+  .side-head {
+    display: flex; justify-content: space-between; align-items: center;
+    font-size: 15px; font-weight: 600; margin-bottom: 6px;
+  }
+  .side-x {
+    background: #26262e; color: #eee; border: 0; border-radius: 8px;
+    padding: 4px 12px; font-size: 14px; cursor: pointer; font-weight: 400;
+  }
+  #sidebar dt { color: #888; font-size: 12px; margin-top: 12px; }
+  #sidebar dd { margin: 2px 0 0; font-size: 14px; word-break: break-all; }
+  #qrBox {
+    display: flex; justify-content: center; margin-top: 16px;
+    background: #fff; border-radius: 10px; padding: 10px;
+  }
+  #qrBox svg { display: block; width: 100%; max-width: 216px; height: auto; }
+  .side-hint { color: #888; font-size: 12px; margin: 10px 0 0; line-height: 1.5; }`;
   document.head.appendChild(style);
 })();
 
