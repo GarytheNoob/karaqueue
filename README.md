@@ -15,7 +15,7 @@ Each part (P) of a multi-part bilibili submission counts as one track, and the p
 
 bilibili throttles the metadata API under load and answers with an HTML page, often with HTTP 412. A submission still succeeds when that happens. The server checks the local cache first and skips the network on a hit, and entries stay valid for 24 hours. When the API is still blocked (for example outside mainland China, where the block is geo-based and stable), the server falls back to the plain video page and parses the same metadata out of `window.__INITIAL_STATE__` - deleted or region-locked videos have no such data and then degrade like any other failure. Without any metadata, the track is enqueued link-only and still plays, with the title showing "metadata missing". Rejection happens only when the video id itself is invalid or missing (bilibili codes -400 and -404). Up front, the server fetches `buvid3` and `buvid4` cookies to reduce how often 412 appears.
 
-YouTube metadata comes from the official keyless oEmbed endpoint: title, author and thumbnail, no duration (the duration cell stays empty, nothing depends on it). Only a missing video (HTTP 404) rejects a submission; private or embed-blocked videos degrade to a link-only item that still plays on youtube.com. Both sources share the same cache and the same degrade ladder, and mixed bilibili/YouTube queues are marked with a red `[YT]` badge on YouTube entries.
+YouTube metadata comes from the official keyless oEmbed endpoint: title, author and thumbnail, no duration (the duration cell stays empty, nothing depends on it). Only a missing video (HTTP 404) rejects a submission; private or embed-blocked videos degrade to a link-only item that still plays on youtube.com. Both sources share the same cache and the same degrade ladder, and mixed bilibili/YouTube queues mark YouTube entries with a platform glyph.
 
 ## Queue and Rules
 
@@ -29,7 +29,11 @@ Every change travels over SSE (server-sent events): submit, skip, delete, reorde
 
 ## Request Page
 
-The request page opens on a phone and holds the submit form, now playing, and the queue. A second page holds the played history, oldest first with sequence numbers, where 1 is the first song of the night. Track cards use blue for NOW and amber for NEXT.
+The request page opens on a phone and holds the submit form, now playing, and the queue. A second page holds the played history, oldest first with sequence numbers, where 1 is the first song of the night. Track cards use blue for NOW and amber for NEXT, and each card carries a platform glyph (never fetched from a CDN - inline SVG data URIs).
+
+Long titles never wrap: they scroll in a marquee loop that starts only when you hover over the title, and on touch screens a tap on the title row toggles scrolling. The loop is disabled entirely when the system asks for reduced motion.
+
+Submit and withdraw results appear as short toasts at the bottom of the screen instead of a persistent message line; failures repeat the server's own localized sentence and disappear after 4.5 seconds (click to dismiss sooner).
 
 A collapsible sidebar (the `☰` button in the header) shows how a phone joins: the host machine's Wi-Fi network and LAN address, plus a QR code that opens the request page. The QR encodes the address the very request arrived on, so VPN/tunnel interfaces do not break it. Recent macOS delivers the SSID only with Location permission for the server process; without it the row says "not available" and the address still carries the point.
 
@@ -45,14 +49,14 @@ The extension uses Manifest V3 and drives the big-screen browser.
 
 ## Admin Console
 
-The admin console runs on a separate port, opens on a phone, and targets the host.
+The admin console runs on a separate port, opens on a phone, and targets the host. It carries the same language switcher, top layout, and LAN-access drawer as the request page, and its QR points guests at the request page.
 
 - skip the current track immediately
-- delete a queued track
-- reorder one step up or down, or jump to the top with the "⤒" button
+- delete a queued track (✕ on the card)
+- drag a queued track by its grip handle to any slot, or jump to the top with the "⤒" button; a keyboard works too, ArrowUp/ArrowDown on the focused grip
 - re-request any entry in the played history, which carries sequence numbers
 
-Two room rules are toggles:
+Two room rules are toggles rendered as switches:
 
 - Allow the same track in the queue more than once. By default, the server rejects a duplicate of a playing or queued track; enabling it lets guests stack the same song.
 - Fair rotation, one song per guest. When on, a guest may hold at most one track that is playing or queued. Matching uses a browser cookie that survives nickname edits and reloads. A locked guest sees a greyed-out submit button and a locked nickname input until their song finishes.
@@ -63,15 +67,16 @@ Two room rules are toggles:
 - `server/static/index.html`: the request page
 - `server/static/admin.html`: the admin console
 - `server/static/i18n/`: UI strings, one JSON per language plus the shared i18n core
+- `server/static/ui/ui.js`: shared browser helpers for both pages (platform icons, title marquee, toasts, LAN drawer)
 - `extension/`: the Chrome extension
 
-Both pages are single-file and framework-free.
+Both pages are single-file and framework-free; the shared parts live in `ui/ui.js` and the i18n core, both plain scripts.
 
 ## Languages
 
-Both pages have a language dropdown in the header. The choice is stored in the browser and survives reloads; the default is Chinese.
+Both pages have a segmented `En | 简 | 繁` switcher in the header - a sliding pill rather than a system dropdown. The choice is stored in the browser and survives reloads; the default is Chinese.
 
-Interface strings live in `server/static/i18n/`, one JSON file per language. `zh-CN.json` and `en.json` ship with identical keys. To add a language: copy `zh-CN.json`, translate the values, then add the code to the `I18N_LANGS` list in `static/i18n/i18n.js`.
+Interface strings live in `server/static/i18n/`, one JSON file per language; `zh-CN.json`, `en.json` and `zh-Hant.json` ship with identical keys. To add a language: copy `zh-CN.json`, translate the values, then add the code to the `I18N_LANGS` list in `static/i18n/i18n.js` and a caption to `I18N_SWITCH_CAPTION`.
 
 Server-generated messages (submit rejections, degrade warnings) follow the page's language: the pages send the chosen language in an `X-Karaqueue-Lang` header and the server translates from the same files. Clients without the header, like the extension popup, get Chinese.
 
@@ -80,7 +85,7 @@ Server API quick reference, for tinkering:
 - Public reads: `GET /` (page), `GET /api/state`, `GET /api/events` (SSE)
 - Public writes: `POST /api/submit` `{input, by, uid}`, `POST /api/withdraw` `{id, uid}`, `POST /api/advance`, `POST /api/skip`
 - Admin reads: `GET /` (console), `GET /api/state`, `GET /api/events`, `GET /api/config`
-- Admin writes: `POST /api/config` `{allowQueuedDuplicates, oneSongPerGuest}`, `POST /api/skip`, `POST /api/delete` `{id}`, `POST /api/reorder` `{id, direction: up|down|top}`, `POST /api/rerequest` `{id}`
+- Admin writes: `POST /api/config` `{allowQueuedDuplicates, oneSongPerGuest}`, `POST /api/skip`, `POST /api/delete` `{id}`, `POST /api/reorder` `{id, direction: up|down|top}` or `{id, index: 0-based slot}`, `POST /api/rerequest` `{id}`
 
 ## Running
 
