@@ -33,6 +33,9 @@
  * User-facing server strings (submit errors, warnings) are translated
  * per request from the page's `X-Karaqueue-Lang` header or `?lang=`
  * query, using the same lang packs as the pages; default zh-CN.
+ * Bilibili metadata: view API first; on API-level risk control (412,
+ * geo-based, e.g. from Hong Kong) the plain video page is parsed as
+ * fallback (KARAQUEUE_VIDEO_PAGE overrides its base URL for tests).
  * Run: node server/karaoke.mjs   (env: PORT, HOST, ADMIN_PORT)
  */
 import http from "node:http";
@@ -571,6 +574,86 @@ async function fetchView({ bvid, aid }) {
   return body.data;
 }
 
+/** Parse a JSON object assigned to a JS global out of an HTML page.
+ *  Starts at the first `{` after the marker and brace-counts to its
+ *  matching partner, so trailing statements never confuse the parser. */
+function extractJsonAfter(haystack, marker) {
+  const start = haystack.indexOf(marker);
+  if (start < 0) return null;
+  let i = haystack.indexOf("{", start + marker.length);
+  if (i < 0) return null;
+  let depth = 0, inString = false, escaped = false;
+  for (let j = i; j < haystack.length; j++) {
+    const c = haystack[j];
+    if (inString) {
+      if (escaped) escaped = false;
+      else if (c === "\\") escaped = true;
+      else if (c === '"') inString = false;
+      continue;
+    }
+    if (c === '"') inString = true;
+    else if (c === "{") depth++;
+    else if (c === "}") {
+      depth--;
+      if (depth === 0) {
+        try {
+          return JSON.parse(haystack.slice(i, j + 1));
+        } catch {
+          return null;
+        }
+      }
+    }
+  }
+  return null;
+}
+
+/**
+ * Page-level fallback for when the view API is not reachable at all -
+ * geo-based risk control answers 412 to every API call from an
+ * overseas exit (verified stable from Hong Kong), but the plain video
+ * page still serves and carries the whole metadata in
+ * window.__INITIAL_STATE__.videoData. Pages for deleted or
+ * region-locked videos have no videoData ("where did the video go?"
+ * placeholder) and fail exactly like an API infra error, so the
+ * caller's degrade ladder stays in charge.
+ */
+async function fetchViewViaPage(parsed) {
+  const vid = parsed.bvid ?? `av${parsed.aid}`;
+  const base = process.env.KARAQUEUE_VIDEO_PAGE || "https://www.bilibili.com/video/";
+  const res = await fetch(`${base}${vid}/`, {
+    headers: {
+      "User-Agent": BROWSER_UA,
+      Referer: "https://www.bilibili.com/",
+      Accept: "text/html,application/xhtml+xml,*/*",
+      "Accept-Language": "zh-CN,zh;q=0.9",
+    },
+    signal: AbortSignal.timeout(8000),
+  });
+  if (!res.ok) {
+    throw new MetaApiError(`video page HTTP ${res.status}`, res.status);
+  }
+  const initialState = extractJsonAfter(await res.text(), "window.__INITIAL_STATE__=");
+  const v = initialState?.videoData;
+  if (!v || typeof v.title !== "string" || !v.bvid) {
+    throw new MetaApiError(
+      "video page has no videoData (removed, region-locked, or page markup changed)",
+      "page",
+    );
+  }
+  // Normalize into exactly the shape fetchView's body.data has, so the
+  // cache and makeItem see one format regardless of the source.
+  return {
+    bvid: v.bvid,
+    title: v.title,
+    pic: v.pic ?? "",
+    duration: v.duration ?? 0,
+    owner: { name: v.owner?.name ?? "" },
+    pages: Array.isArray(v.pages)
+      ? v.pages.map((p) => ({ page: p.page, part: p.part, duration: p.duration }))
+      : [],
+  };
+}
+
 /** Codes meaning "this submission itself is wrong": reject, don't degrade. */
 const USER_ERROR_CODES = new Set([-400, -404]);
 
@@ -650,6 +733,17 @@ async function resolveView(parsed) {
   } catch (err) {
     // Truly invalid or missing video: reject the submission outright.
     if (err instanceof MetaApiError && USER_ERROR_CODES.has(err.code)) throw err;
+
+    // The API answer was noise (412 risk control, timeouts...): the page
+    // may still serve. Tried before the stale cache so a working page
+    // beats old data.
+    try {
+      const view = await fetchViewViaPage(parsed);
+      rememberView(parsed, view);
+      return { view, warning: null };
+    } catch {
+      /* next rung of the ladder: the stale cache */
+    }
 
     if (cached) {
       return { view: cached.view, warning: { key: "srv.warn_bili_cache" } };
