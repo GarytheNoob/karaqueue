@@ -397,6 +397,8 @@ img {
 
 /* Row actions: quiet text until you aim at them. */
 .linkbtn {
+  position: relative;
+  isolation: isolate;
   flex: none;
   padding: 7px 6px;
   margin: -7px -6px -7px -2px;
@@ -407,14 +409,31 @@ img {
   line-height: 1.4;
   cursor: pointer;
   border-radius: 6px;
-  transition: color 0.15s ease, background-color 0.15s ease;
+  transition: color 0.15s ease;
 }
 
-/* Text until you aim at it; then the action gets a quiet raised shape. */
+/* The hit area stays tall for touch, but the shape is kept inside the
+ * text line so it never reaches the descenders of the title above. */
+.linkbtn::before {
+  content: "";
+  position: absolute;
+  inset: 4px 0;
+  background: var(--raised-2);
+  border-radius: 6px;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+  pointer-events: none;
+  z-index: -1;
+}
+
 .linkbtn:hover:not(:disabled),
 .linkbtn:focus-visible {
-  background: var(--raised-2);
   color: var(--text);
+}
+
+.linkbtn:hover:not(:disabled)::before,
+.linkbtn:focus-visible::before {
+  opacity: 1;
 }
 
 .linkbtn:disabled {
