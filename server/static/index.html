@@ -172,11 +172,10 @@ function card(item, { now = false, next = false, index = 0, withdraw = false } =
       : `${mineTag}${item.status === "played" || item.status === "skipped"
           ? `<span class="tag done">${t(item.status === "skipped" ? "tag.skipped" : "tag.played")}</span>`
           : ""}`;
-  const pg = item.page_count > 1 ? `<span class="pg">P${item.page}</span>` : "";
   const idx = index ? `<span class="idx">${index}</span>` : "";
   return `<div class="card ${now ? "now" : next ? "next" : ""}">
     <div class="title">${label(item)}<span class="badges">${tag}</span></div>
-    <div class="meta"><span>${idx}${pg}${esc(t("card.requested_by", { by: item.requested_by }))}</span><span>${item.duration_s ? fmtDur(item.duration_s) : ""}</span></div>
+    <div class="meta"><span>${idx}${esc(t("card.requested_by", { by: item.requested_by }))}</span><span>${item.duration_s ? fmtDur(item.duration_s) : ""}</span></div>
     ${withdraw && mine ? `<div class="actions"><button class="mini" data-withdraw="${esc(item.id)}" title="${esc(t("index.withdraw_title"))}">${esc(t("index.withdraw"))}</button></div>` : ""}
   </div>`;
 }

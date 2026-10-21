@@ -24,18 +24,20 @@
     width: 16px; height: 16px; border-radius: 4px; margin-right: 6px;
     flex: none; align-self: center;
   }
-  .pg { color: #56718e; flex: none; font-size: 11px; margin-right: 6px; font-variant-numeric: tabular-nums; }
   .tscroll { flex: 1 1 auto; min-width: 0; overflow: hidden; }
-  /* Default: no animation at all, so idle titles always render from
-   * their start (a paused-but-attached animation would freeze mid-scroll
-   * after the pointer leaves). The loop only exists while scrolling. */
+  /* The marquee is a single leftward sweep: idle titles render from
+   * their start (no attached animation to freeze mid-scroll), and while
+   * hovering/tapped the text scrolls once to its end and stops there
+   * (fill: forwards) instead of looping. Depends on enhanceMarquee()
+   * having approved the element via [data-scroll] — fitting titles
+   * never scroll at all. */
   .tscroll .run { display: inline-flex; white-space: nowrap; will-change: transform; }
   .tscroll .run .ttext:not(:last-child) { padding-right: 2.2em; }
-  .tscroll:hover .run, .card.scrolling .run {
-    animation: mq var(--mq, 9s) linear infinite;
+  .tscroll[data-scroll]:hover .run, .card.scrolling .tscroll[data-scroll] .run {
+    animation: mq var(--mq, 9s) linear 1 forwards;
     animation-play-state: running;
   }
-  @keyframes mq { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+  @keyframes mq { from { transform: translateX(0); } to { transform: translateX(var(--mq-end, -100%)); } }
 
   .toasts {
     position: fixed; bottom: 18px; left: 0; right: 0; z-index: 60;
@@ -121,14 +123,19 @@ function label(item) {
   const key = known ? item.platform : "unknown";
   const name = t(known ? `card.platform_${item.platform}` : "card.platform_unknown");
   const icon = `<img class="picon" src="${PLATFORM_ICONS[key]}" alt="" title="${esc(name)}">`;
-  const run = `<span class="tscroll"><span class="run"><span class="ttext">${esc(titleText(item))}</span></span></span>`;
+  // Multi-part titles read "Title - P2"; single parts stay clean. The
+  // suffix lives inside the scrolling text, so it is never squeezed out.
+  const part = item.page_count > 1 ? ` - P${item.page}` : "";
+  const run = `<span class="tscroll"><span class="run"><span class="ttext">${esc(titleText(item))}${part}</span></span></span>`;
   return `${icon}${run}`;
 }
 
 /* Measure each title once per render; only overflowing ones get their
- * hidden duplicate appended (for the seamless loop) plus an animation
- * whose duration scales with the overflow width. Devices without hover
- * (phones) toggle scrolling by tapping the title. */
+ * hidden duplicate appended plus a data-scroll approval, a single-sweep
+ * end offset (the tail of the text lands on the right edge and stays
+ * there) and a duration proportional to that distance. Fitting titles
+ * never scroll. Devices without hover (phones) toggle the sweep by
+ * tapping the title. */
 function enhanceMarquee(root = document) {
   root.querySelectorAll(".tscroll").forEach((el) => {
     const run = el.firstElementChild;
@@ -140,7 +147,12 @@ function enhanceMarquee(root = document) {
     dup.setAttribute("aria-hidden", "true");
     dup.textContent = run.firstElementChild.textContent;
     run.appendChild(dup);
-    el.style.setProperty("--mq", `${Math.max(6000, Math.round(run.scrollWidth / 2 * 22))}ms`);
+    // Sweep once so the very end of the text shows at the right edge,
+    // then freeze there (animation fills forwards) until re-triggered.
+    const dist = run.scrollWidth - el.clientWidth;
+    el.setAttribute("data-scroll", "");
+    el.style.setProperty("--mq-end", `${-dist}px`);
+    el.style.setProperty("--mq", `${Math.max(6000, Math.round(dist * 22))}ms`);
     el.closest(".card")?.addEventListener("click", (e) => {
       // Touch fallback: no hover, so a tap on the title row toggles it.
       if (!e.target.closest("button") && matchMedia("(hover: none)").matches) {

@@ -31,7 +31,7 @@ Every change travels over SSE (server-sent events): submit, skip, delete, reorde
 
 The request page opens on a phone and holds the submit form, now playing, and the queue. A second page holds the played history, oldest first with sequence numbers, where 1 is the first song of the night. Track cards use blue for NOW and amber for NEXT, and each card carries a platform glyph (never fetched from a CDN - inline SVG data URIs).
 
-Long titles never wrap: they scroll in a marquee loop that starts only when you hover over the title, and on touch screens a tap on the title row toggles scrolling. Scrolling is always triggered by you, so it works the same regardless of the system's reduced-motion setting.
+Long titles never wrap: when you hover over the title it sweeps left once until the end of the text is visible and stays there (no looping), and on touch screens a tap on the title row toggles that sweep. Titles that already fit never scroll. Scrolling is always triggered by you, so it works the same regardless of the system's reduced-motion setting.
 
 Submit and withdraw results appear as short toasts at the bottom of the screen instead of a persistent message line; failures repeat the server's own localized sentence and disappear after 4.5 seconds (click to dismiss sooner).
 

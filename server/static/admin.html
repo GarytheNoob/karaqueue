@@ -53,10 +53,12 @@
     border: 0; background: #1c1c22; border-radius: 8px; cursor: grab;
     padding: 0; touch-action: none; min-height: 52px;
   }
+  /* Grip: three single dots stacked vertically, fixed size — the tiles
+   * are sized so the dots never clip, and the block never stretches. */
   .grip::before {
-    content: ""; display: block; width: 12px; height: 36px; flex: none;
-    background-image: radial-gradient(circle, #5a6070 1.6px, transparent 1.9px);
-    background-size: 6px 12px; background-position: center; background-repeat: repeat;
+    content: ""; display: block; width: 5px; height: 36px; flex: none;
+    background-image: radial-gradient(circle, #5a6070 1.5px, transparent 1.9px);
+    background-size: 5px 12px; background-position: center; background-repeat: repeat;
   }
   .grip:hover { background: #22222b; }
   .grip:active { cursor: grabbing; background: #2a2a35; }
@@ -192,11 +194,10 @@ function card(item, { now = false, next = false, index = 0, controls = null } = 
       : item.status === "played" || item.status === "skipped"
         ? `<span class="tag done">${t(item.status === "skipped" ? "tag.skipped" : "tag.played")}</span>`
         : "";
-  const pg = item.page_count > 1 ? `<span class="pg">P${item.page}</span>` : "";
   const idx = index ? `<span class="idx">${index}</span>` : "";
   const line = (extraRow = "") => `
     <div class="title">${label(item)}<span class="badges">${tag}</span></div>
-    <div class="meta"><span>${idx}${pg}${esc(t("card.requested_by", { by: item.requested_by }))}</span><span>${item.duration_s ? fmtDur(item.duration_s) : ""}</span></div>
+    <div class="meta"><span>${idx}${esc(t("card.requested_by", { by: item.requested_by }))}</span><span>${item.duration_s ? fmtDur(item.duration_s) : ""}</span></div>
     ${extraRow}`;
   let row = "";
   if (controls === "queue") {
