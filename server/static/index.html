@@ -152,7 +152,7 @@ function trackRow(item, { next = false, index = 0, withdraw = false } = {}) {
     item.status === "skipped" ? `<span class="chip chip--muted">${esc(t("tag.skipped"))}</span>` : "",
   ].join("");
   const action = withdraw && mine
-    ? `<button class="linkbtn" data-withdraw="${esc(item.id)}" title="${esc(t("index.withdraw_title"))}">${esc(t("index.withdraw"))}</button>`
+    ? `<button class="rowbtn" data-withdraw="${esc(item.id)}" title="${esc(t("index.withdraw_title"))}">${esc(t("index.withdraw"))}</button>`
     : "";
   return `<div class="track" data-track>
     ${index ? `<span class="pos">${index}</span>` : ""}

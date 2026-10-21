@@ -423,6 +423,36 @@ img {
   color: var(--negative);
 }
 
+/* A row action that must read as a button at a glance (the guest's own
+ * withdraw): filled by lightness like every other quiet control, not a
+ * coloured tag. */
+.rowbtn {
+  display: inline-flex;
+  align-items: center;
+  flex: none;
+  height: 30px;
+  margin: -8px 0 -8px 2px;
+  padding: 0 12px;
+  background: var(--raised);
+  border: 0;
+  border-radius: 999px;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.rowbtn:hover {
+  background: var(--raised-2);
+}
+
+.rowbtn:active {
+  transform: translateY(1px);
+}
+
 /* A row's own remove mark, the one icon action in the setlist. */
 .xbtn {
   display: inline-flex;
