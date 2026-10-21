@@ -38,24 +38,25 @@
   .card { background: #17171d; border: 1px solid #26262e; border-radius: 12px; padding: 10px 12px; margin-bottom: 8px; }
   .card.now { border-color: #2f6fed; }
   .card .title { font-size: 14px; line-height: 1.5; display: flex; align-items: center; }
-  .card .meta { font-size: 12px; color: #888; margin-top: 4px; display: flex; justify-content: space-between; }
+  .card .meta { font-size: 12px; color: #888; margin-top: 5px; display: flex; justify-content: space-between; align-items: baseline; min-height: 17px; }
   .tag { font-size: 11px; background: #2f6fed; color: #fff; border-radius: 4px; padding: 1px 6px; margin-right: 6px; vertical-align: 2px; }
   .tag.next { background: #e0a33f; color: #2b1d00; }
   .tag.done { background: #444; color: #aaa; }
   .card.next { border-color: #e0a33f; }
   /* Queue cards are flex rows: grip | body | remove. */
-  .qcard { display: flex; align-items: center; gap: 4px; }
-  .qcard .qbody { flex: 1; min-width: 0; }
-  .qcard .xbtn { flex: none; padding: 6px 8px; }
+  .qcard { display: flex; align-items: stretch; gap: 5px; }
+  .qcard .qbody { flex: 1; min-width: 0; padding: 1px 0; }
+  .qcard .xbtn { flex: none; align-self: stretch; width: 34px; padding: 0 8px; }
   .grip {
-    align-self: stretch; width: 22px; flex: 1 0 22px; max-width: 26px;
+    align-self: stretch; flex: 0 0 24px;
+    display: flex; align-items: center; justify-content: center;
     border: 0; background: #1c1c22; border-radius: 8px; cursor: grab;
     padding: 0; touch-action: none; min-height: 52px;
   }
   .grip::before {
-    content: ""; display: block; height: 34px; margin: auto; width: 14px;
-    background-image: radial-gradient(#5a6070 1.7px, transparent 2px);
-    background-size: 7px 10px; background-position: center; background-repeat: repeat-y;
+    content: ""; display: block; width: 12px; height: 36px; flex: none;
+    background-image: radial-gradient(circle, #5a6070 1.6px, transparent 1.9px);
+    background-size: 6px 12px; background-position: center; background-repeat: repeat;
   }
   .grip:hover { background: #22222b; }
   .grip:active { cursor: grabbing; background: #2a2a35; }
@@ -184,7 +185,6 @@ async function mutate(path, body) {
 }
 
 function card(item, { now = false, next = false, index = 0, controls = null } = {}) {
-  const idx = index ? `<span class="idx">${index}.</span>` : "";
   const tag = now
     ? `<span class="tag">NOW</span>`
     : next
@@ -192,6 +192,12 @@ function card(item, { now = false, next = false, index = 0, controls = null } = 
       : item.status === "played" || item.status === "skipped"
         ? `<span class="tag done">${t(item.status === "skipped" ? "tag.skipped" : "tag.played")}</span>`
         : "";
+  const pg = item.page_count > 1 ? `<span class="pg">P${item.page}</span>` : "";
+  const idx = index ? `<span class="idx">${index}</span>` : "";
+  const line = (extraRow = "") => `
+    <div class="title">${label(item)}<span class="badges">${tag}</span></div>
+    <div class="meta"><span>${idx}${pg}${esc(t("card.requested_by", { by: item.requested_by }))}</span><span>${item.duration_s ? fmtDur(item.duration_s) : ""}</span></div>
+    ${extraRow}`;
   let row = "";
   if (controls === "queue") {
     row = `<div class="actions">
@@ -203,19 +209,11 @@ function card(item, { now = false, next = false, index = 0, controls = null } = 
   if (controls === "queue") {
     return `<div class="card qcard ${next ? "next" : ""}" data-qid="${esc(item.id)}">
       <button class="grip" type="button" aria-label="${esc(t("admin.drag_hand"))}" ${lastState && lastState.queue.length < 2 ? 'aria-disabled="true"' : ""}></button>
-      <div class="qbody">
-        <div class="title">${idx}${tag}${label(item)}</div>
-        <div class="meta"><span>${esc(t("card.requested_by", { by: item.requested_by }))}</span><span>${item.duration_s ? fmtDur(item.duration_s) : ""}</span></div>
-        ${row}
-      </div>
+      <div class="qbody">${line(row)}</div>
       <button class="mini danger xbtn" data-del="${esc(item.id)}" title="${esc(t("admin.btn.remove"))}">✕</button>
     </div>`;
   }
-  return `<div class="card ${now ? "now" : next ? "next" : ""}">
-    <div class="title">${idx}${tag}${label(item)}</div>
-    <div class="meta"><span>${esc(t("card.requested_by", { by: item.requested_by }))}</span><span>${item.duration_s ? fmtDur(item.duration_s) : ""}</span></div>
-    ${row}
-  </div>`;
+  return `<div class="card ${now ? "now" : next ? "next" : ""}">${line(row)}</div>`;
 }
 
 function render(state) {

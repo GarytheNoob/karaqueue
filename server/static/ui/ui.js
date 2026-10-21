@@ -24,17 +24,18 @@
     width: 16px; height: 16px; border-radius: 4px; margin-right: 6px;
     flex: none; align-self: center;
   }
-  .pg { color: #7ab; flex: none; font-size: 12px; margin-left: 6px; font-variant-numeric: tabular-nums; }
+  .pg { color: #56718e; flex: none; font-size: 11px; margin-right: 6px; font-variant-numeric: tabular-nums; }
   .tscroll { flex: 1 1 auto; min-width: 0; overflow: hidden; }
-  .tscroll .run {
-    display: inline-flex; white-space: nowrap; will-change: transform;
-    animation: mq linear infinite; animation-duration: var(--mq, 9s);
-    animation-play-state: paused;
-  }
+  /* Default: no animation at all, so idle titles always render from
+   * their start (a paused-but-attached animation would freeze mid-scroll
+   * after the pointer leaves). The loop only exists while scrolling. */
+  .tscroll .run { display: inline-flex; white-space: nowrap; will-change: transform; }
   .tscroll .run .ttext:not(:last-child) { padding-right: 2.2em; }
-  .tscroll:hover .run, .card.scrolling .run { animation-play-state: running; }
+  .tscroll:hover .run, .card.scrolling .run {
+    animation: mq var(--mq, 9s) linear infinite;
+    animation-play-state: running;
+  }
   @keyframes mq { from { transform: translateX(0); } to { transform: translateX(-50%); } }
-  @media (prefers-reduced-motion: reduce) { .tscroll .run { animation: none; } }
 
   .toasts {
     position: fixed; bottom: 18px; left: 0; right: 0; z-index: 60;
@@ -64,10 +65,10 @@
   #sideOverlay { position: fixed; inset: 0; background: rgba(0,0,0,.45); z-index: 40; }
   #sideOverlay[hidden] { display: none; }
   #sidebar {
-    position: fixed; top: 0; left: 0; bottom: 0; z-index: 41;
+    position: fixed; top: 0; right: 0; bottom: 0; z-index: 41;
     width: min(340px, 86vw); padding: 16px; overflow-y: auto;
-    background: #17171d; border-right: 1px solid #33333d;
-    transform: translateX(-102%); transition: transform .22s ease;
+    background: #17171d; border-left: 1px solid #33333d;
+    transform: translateX(102%); transition: transform .22s ease;
   }
   #sidebar.open { transform: translateX(0); }
   .side-head {
@@ -121,8 +122,7 @@ function label(item) {
   const name = t(known ? `card.platform_${item.platform}` : "card.platform_unknown");
   const icon = `<img class="picon" src="${PLATFORM_ICONS[key]}" alt="" title="${esc(name)}">`;
   const run = `<span class="tscroll"><span class="run"><span class="ttext">${esc(titleText(item))}</span></span></span>`;
-  const part = item.page_count > 1 ? `<span class="pg">P${item.page}</span>` : "";
-  return `${icon}${run}${part}`;
+  return `${icon}${run}`;
 }
 
 /* Measure each title once per render; only overflowing ones get their

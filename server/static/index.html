@@ -26,7 +26,7 @@
   .topbar .back { grid-column: 1; justify-self: start; }
   form { display: flex; flex-direction: column; gap: 8px; }
   .history-link {
-    display: block; text-align: center; text-decoration: none;
+    display: block; margin-top: 14px; text-align: center; text-decoration: none;
     background: #17171d; border: 1px dashed #33333d; border-radius: 10px;
     padding: 10px; color: #7ab; font-size: 13px;
   }
@@ -52,13 +52,14 @@
     padding: 10px 12px; margin-bottom: 8px;
   }
   .card .title { font-size: 14px; line-height: 1.5; display: flex; align-items: center; }
-  .card .meta { font-size: 12px; color: #888; margin-top: 4px; display: flex; justify-content: space-between; }
+  .card .meta { font-size: 12px; color: #888; margin-top: 5px; display: flex; justify-content: space-between; align-items: baseline; min-height: 17px; }
   .card.now { border-color: #2f6fed; }
   .card.next { border-color: #e0a33f; }
   .tag {
     font-size: 11px; background: #2f6fed; color: #fff; border-radius: 4px;
-    padding: 1px 6px; margin-right: 6px; vertical-align: 2px;
+    padding: 1px 6px; flex: none;
   }
+  .badges { display: inline-flex; gap: 6px; margin-left: auto; flex: none; align-items: center; }
   .tag.done { background: #444; color: #aaa; }
   .tag.next { background: #e0a33f; color: #2b1d00; }
   .tag.mine { background: #2fa25c; color: #fff; }
@@ -69,8 +70,8 @@
   }
   .mini:active { background: #33333d; }
   .idx {
-    color: #67718a; font-size: 12px; font-weight: 600;
-    margin-right: 7px; font-variant-numeric: tabular-nums;
+    color: #67718a; font-size: 12px; font-weight: 600; flex: none;
+    margin-right: 6px; font-variant-numeric: tabular-nums;
   }
   .empty { color: #666; font-size: 13px; padding: 6px 2px; }
   .row-head { display: flex; justify-content: space-between; align-items: baseline; }
@@ -159,9 +160,9 @@ const UID = (() => {
 })();
 
 function card(item, { now = false, next = false, index = 0, withdraw = false } = {}) {
-  const part = item.page_count > 1 ? ` · P${item.page}` : "";
   // "Mine" badge (green) marks every track this browser requested,
-  // everywhere: now playing, queue and history.
+  // everywhere: now playing, queue and history. Badges dock top-right;
+  // the title keeps the top-left corner, icon first.
   const mine = !!item.requester_uid && item.requester_uid === UID;
   const mineTag = mine ? `<span class="tag mine">${t("tag.mine")}</span>` : "";
   const tag = now
@@ -171,12 +172,11 @@ function card(item, { now = false, next = false, index = 0, withdraw = false } =
       : `${mineTag}${item.status === "played" || item.status === "skipped"
           ? `<span class="tag done">${t(item.status === "skipped" ? "tag.skipped" : "tag.played")}</span>`
           : ""}`;
-  const idx = index
-    ? `<span class="idx">${index}.</span>`
-    : "";
+  const pg = item.page_count > 1 ? `<span class="pg">P${item.page}</span>` : "";
+  const idx = index ? `<span class="idx">${index}</span>` : "";
   return `<div class="card ${now ? "now" : next ? "next" : ""}">
-    <div class="title">${idx}${tag}${label(item)}</div>
-    <div class="meta"><span>${esc(t("card.requested_by", { by: item.requested_by }))}</span><span>${item.duration_s ? fmtDur(item.duration_s) : ""}</span></div>
+    <div class="title">${label(item)}<span class="badges">${tag}</span></div>
+    <div class="meta"><span>${idx}${pg}${esc(t("card.requested_by", { by: item.requested_by }))}</span><span>${item.duration_s ? fmtDur(item.duration_s) : ""}</span></div>
     ${withdraw && mine ? `<div class="actions"><button class="mini" data-withdraw="${esc(item.id)}" title="${esc(t("index.withdraw_title"))}">${esc(t("index.withdraw"))}</button></div>` : ""}
   </div>`;
 }
