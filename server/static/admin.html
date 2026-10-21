@@ -211,6 +211,12 @@ function nowPanel(item) {
 }
 
 function render(state) {
+  // Never rebuild the rows under a held card: a poll or SSE frame during
+  // a drag would detach the card and freeze the gesture. Apply it after.
+  if (drag) {
+    dragPending = state;
+    return;
+  }
   lastState = state;
   $("queueCount").textContent = state.queue.length ? t("index.queue_count", { n: state.queue.length }) : "";
   $("historyCount").textContent = state.history.length ? String(state.history.length) : "";
@@ -281,6 +287,11 @@ async function refresh() {
  * the new slot goes to /api/reorder { id, index }. Escape cancels.
  * Keyboard users press ArrowUp/ArrowDown on the focused grip. */
 let drag = null;
+let dragRaf = 0;
+let dragY = 0;
+/* State that arrived while dragging; the rows cannot be replaced under
+   the finger, so it waits for the drop. */
+let dragPending = null;
 
 function queueRows() {
   return [...$("queue").querySelectorAll(".qcard")];
@@ -290,12 +301,33 @@ function gripDisabled(grip) {
   return grip.getAttribute("aria-disabled") === "true";
 }
 
+/* One drag frame: move the held card to the pointer, then shift only the
+   siblings whose slot actually changed (rewriting every row every frame
+   restarts each row's transition and is what made the drag stutter). */
+function updateDrag(y) {
+  if (!drag) return;
+  const originRect = drag.rects[drag.origin];
+  const dy = y - drag.startClientY;
+  drag.cardEl.style.transform = `translateY(${dy}px) rotate(1deg) scale(1.01)`;
+  const offset = Math.round((y - (originRect.top + originRect.height / 2)) / drag.slot);
+  drag.target = Math.max(0, Math.min(drag.list.length - 1, drag.origin + offset));
+  drag.list.forEach((el, i) => {
+    if (el === drag.cardEl) return;
+    const shift = (i > drag.origin && i <= drag.target) ? -drag.slot
+      : (i < drag.origin && i >= drag.target) ? drag.slot : 0;
+    if (drag.shifts[i] === shift) return;
+    drag.shifts[i] = shift;
+    el.style.transform = shift ? `translateY(${shift}px)` : "";
+  });
+}
+
 document.addEventListener("pointerdown", (e) => {
   const grip = e.target.closest?.(".grip");
   if (!grip || gripDisabled(grip) || drag) return;
   const list = queueRows();
   if (list.length < 2) return;
   e.preventDefault();
+  dragY = e.clientY;
   drag = {
     cardEl: grip.closest(".qcard"),
     list,
@@ -303,6 +335,7 @@ document.addEventListener("pointerdown", (e) => {
     origin: list.indexOf(grip.closest(".qcard")),
     startClientY: e.clientY,
     target: list.indexOf(grip.closest(".qcard")),
+    shifts: list.map(() => 0),
   };
   drag.slot = drag.rects[1].top - drag.rects[0].top || (drag.rects[0].height + 8);
   drag.cardEl.classList.add("dragging");
@@ -310,30 +343,35 @@ document.addEventListener("pointerdown", (e) => {
 
 document.addEventListener("pointermove", (e) => {
   if (!drag) return;
-  const originRect = drag.rects[drag.origin];
-  const dy = e.clientY - drag.startClientY;
-  drag.cardEl.style.transform = `translateY(${dy}px) rotate(1deg) scale(1.01)`;
-  drag.cardEl.style.zIndex = "5";
-  const offset = Math.round((e.clientY - (originRect.top + originRect.height / 2)) / drag.slot);
-  drag.target = Math.max(0, Math.min(drag.list.length - 1, drag.origin + offset));
-  drag.list.forEach((el, i) => {
-    if (el === drag.cardEl) return;
-    const shift = (i > drag.origin && i <= drag.target) ? -drag.slot
-      : (i < drag.origin && i >= drag.target) ? drag.slot : 0;
-    el.style.transform = shift ? `translateY(${shift}px)` : "";
+  dragY = e.clientY;
+  // Coalesce to one write per frame; high-rate mice fire faster than paint.
+  if (dragRaf) return;
+  dragRaf = requestAnimationFrame(() => {
+    dragRaf = 0;
+    updateDrag(dragY);
   });
 });
 
 function endDrag(commit) {
   if (!drag) return;
+  if (dragRaf) {
+    cancelAnimationFrame(dragRaf);
+    dragRaf = 0;
+  }
+  updateDrag(dragY); // flush the last position so drop uses the final slot
   const d = drag;
+  const pending = dragPending;
   drag = null;
+  dragPending = null;
   d.list.forEach((el) => {
     el.style.transform = "";
     el.style.zIndex = "";
   });
   d.cardEl.classList.remove("dragging");
-  if (!commit || d.target === d.origin) return;
+  if (!commit || d.target === d.origin) {
+    if (pending) render(pending);
+    return;
+  }
   // Optimistic DOM reorder; the server's authoritative broadcast follows.
   if (d.target > d.origin) d.list[d.target].after(d.cardEl);
   else d.list[d.target].before(d.cardEl);
@@ -346,7 +384,11 @@ function endDrag(commit) {
     });
 }
 
-document.addEventListener("pointerup", () => endDrag(true));
+document.addEventListener("pointerup", (e) => {
+  if (!drag) return;
+  dragY = e.clientY;
+  endDrag(true);
+});
 document.addEventListener("pointercancel", () => endDrag(false));
 
 /* Keyboard reorder on the grip itself: focus it, press ↑ / ↓. */
