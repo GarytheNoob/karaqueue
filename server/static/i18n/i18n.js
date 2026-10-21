@@ -8,7 +8,7 @@
  *    `data-i18n-placeholder` and `data-i18n-title`
  *  - strings built in JS go through t(key, vars); `{var}` placeholders
  *    are substituted from vars
- *  - a <select id="lang"> in the page header switches languages
+ *  - a segmented control in the page header switches languages
  *    manually; the choice persists in localStorage (karaqueue:lang)
  *
  * Page contract: the page sets window.I18N_TITLE_KEY (its title key)
@@ -20,7 +20,8 @@ const I18N_STORAGE_KEY = "karaqueue:lang";
 const I18N_FALLBACK = "zh-CN";
 
 /* One entry per translation file; add the new code here when a
-   language is added (the <select> options are built from this). */
+   language is added. The switcher's display order is set separately,
+   below, and is independent of this list. */
 const I18N_LANGS = [
   { code: "zh-CN", label: "中文" },
   { code: "en", label: "English" },
@@ -94,34 +95,14 @@ function savedLang() {
 }
 
 /* --- Segmented language switcher -------------------------------------
- * A sliding pill (En | 简 | 繁) instead of a system <select>. Captions
+ * A sliding thumb (En | 简 | 繁) instead of a system <select>. Captions
  * are fixed glyphs - localizing the control that changes the language
  * makes no sense. Display order below is fixed by design, independent
- * of I18N_LANGS registration order. */
+ * of I18N_LANGS registration order. The control's CSS lives in
+ * ui/theme.css; I18N_SWITCH_WIDTH must match it. */
 const I18N_SWITCH_ORDER = ["en", "zh-CN", "zh-Hant"];
 const I18N_SWITCH_CAPTION = { en: "En", "zh-CN": "简", "zh-Hant": "繁" };
 const I18N_SWITCH_WIDTH = 36; // px per segment, mirrors the CSS
-
-function switchLangStyles() {
-  return `
-.lang-switch {
-  position: relative; display: inline-flex; padding: 3px;
-  background: #1c1c22; border: 1px solid #33333d; border-radius: 999px;
-}
-.lang-switch .ls-thumb {
-  position: absolute; top: 3px; bottom: 3px; left: 3px; width: ${I18N_SWITCH_WIDTH}px;
-  border-radius: 999px; background: #2f6fed;
-  transition: transform .18s ease;
-}
-.lang-switch button {
-  position: relative; z-index: 1; border: 0; background: transparent;
-  width: ${I18N_SWITCH_WIDTH}px; height: 24px; padding: 0;
-  font-size: 12px; color: #99a; border-radius: 999px;
-  cursor: pointer; font-family: inherit;
-}
-.lang-switch button[aria-pressed="true"] { color: #fff; font-weight: 600; }
-.lang-switch button:focus-visible { outline: none; box-shadow: 0 0 0 2px #58a6ff55; border-radius: 999px; }`;
-}
 
 function renderLangSwitch(host, active) {
   if (!host.firstElementChild) {
@@ -173,9 +154,6 @@ async function initI18n(onReady) {
 
   const sw = document.getElementById("langSwitch");
   if (sw) {
-    const style = document.createElement("style");
-    style.textContent = switchLangStyles();
-    document.head.appendChild(style);
     renderLangSwitch(sw, initial);
   } else {
     // Legacy pages without the switcher keep the old <select>.

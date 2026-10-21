@@ -9,88 +9,15 @@
  *  - showToast() is the page-wide short toast (top, centered bottom)
  *  - initSidebar() wires the LAN-access drawer (same markup both pages)
  *
+ * Component CSS (rows, panels, toasts, drawer, marquee) lives in
+ * ui/theme.css, linked by both pages, so nothing is injected at runtime.
+ *
  * This file defines the page-agnostic one-liners (esc, fmtDur,
  * titleText, label) as top-level bindings; the pages must NOT redeclare
  * them (classic scripts share one global lexical scope).
  */
 "use strict";
 
-/* Component CSS for everything below, injected once per page. Page
- * styles stay in the pages; shared component styles live here. */
-(function injectStyles() {
-  const style = document.createElement("style");
-  style.textContent = `
-  img.picon {
-    width: 16px; height: 16px; border-radius: 4px; margin-right: 6px;
-    flex: none; align-self: center;
-  }
-  .tscroll { flex: 1 1 auto; min-width: 0; overflow: hidden; }
-  /* The marquee is a single leftward sweep: idle titles render from
-   * their start (no attached animation to freeze mid-scroll), and while
-   * hovering/tapped the text scrolls once to its end and stops there
-   * (fill: forwards) instead of looping. Depends on enhanceMarquee()
-   * having approved the element via [data-scroll] — fitting titles
-   * never scroll at all. */
-  .tscroll .run { display: inline-flex; white-space: nowrap; will-change: transform; }
-  .tscroll .run .ttext:not(:last-child) { padding-right: 2.2em; }
-  .tscroll[data-scroll]:hover .run, .card.scrolling .tscroll[data-scroll] .run {
-    animation: mq var(--mq, 9s) linear 1 forwards;
-    animation-play-state: running;
-  }
-  @keyframes mq { from { transform: translateX(0); } to { transform: translateX(var(--mq-end, -100%)); } }
-
-  .toasts {
-    position: fixed; bottom: 18px; left: 0; right: 0; z-index: 60;
-    display: flex; flex-direction: column; align-items: center; gap: 8px;
-    pointer-events: none;
-  }
-  .toast {
-    pointer-events: auto; cursor: pointer;
-    background: #1c1c22; border: 1px solid #26262e; border-left: 3px solid #666;
-    border-radius: 10px; padding: 9px 14px; color: #e8e8ee; font-size: 13px;
-    max-width: 84vw; box-shadow: 0 6px 18px rgba(0,0,0,.45);
-    opacity: 0; transform: translateY(8px);
-    transition: opacity .18s ease, transform .18s ease;
-  }
-  .toast.in { opacity: 1; transform: translateY(0); }
-  .toast.out { opacity: 0; transform: translateY(8px); }
-  .toast.ok { border-left-color: #2fa25c; }
-  .toast.fail { border-left-color: #f66; }
-  .toast.warn { border-left-color: #e0a33f; }
-
-  /* LAN-access drawer, identical on both pages. */
-  .side-btn {
-    background: #17171d; border: 1px solid #33333d; color: #ccc;
-    border-radius: 8px; padding: 4px 10px; font-size: 14px; cursor: pointer;
-  }
-  .side-btn:active { background: #26262e; }
-  #sideOverlay { position: fixed; inset: 0; background: rgba(0,0,0,.45); z-index: 40; }
-  #sideOverlay[hidden] { display: none; }
-  #sidebar {
-    position: fixed; top: 0; right: 0; bottom: 0; z-index: 41;
-    width: min(340px, 86vw); padding: 16px; overflow-y: auto;
-    background: #17171d; border-left: 1px solid #33333d;
-    transform: translateX(102%); transition: transform .22s ease;
-  }
-  #sidebar.open { transform: translateX(0); }
-  .side-head {
-    display: flex; justify-content: space-between; align-items: center;
-    font-size: 15px; font-weight: 600; margin-bottom: 6px;
-  }
-  .side-x {
-    background: #26262e; color: #eee; border: 0; border-radius: 8px;
-    padding: 4px 12px; font-size: 14px; cursor: pointer; font-weight: 400;
-  }
-  #sidebar dt { color: #888; font-size: 12px; margin-top: 12px; }
-  #sidebar dd { margin: 2px 0 0; font-size: 14px; word-break: break-all; }
-  #qrBox {
-    display: flex; justify-content: center; margin-top: 16px;
-    background: #fff; border-radius: 10px; padding: 10px;
-  }
-  #qrBox svg { display: block; width: 100%; max-width: 216px; height: auto; }
-  .side-hint { color: #888; font-size: 12px; margin: 10px 0 0; line-height: 1.5; }`;
-  document.head.appendChild(style);
-})();
 
 const PLATFORM_ICONS = {
   bilibili: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20'%3E%3Cpath d='M6.5 1.8 9 4.6M13.5 1.8 11 4.6' stroke='%2323ade5' stroke-width='1.6' stroke-linecap='round'/%3E%3Crect x='1.5' y='4.6' width='17' height='12.2' rx='3.4' fill='%2323ade5'/%3E%3Crect x='6.2' y='8.4' width='2.6' height='4.6' rx='1.3' fill='%23ffffff'/%3E%3Crect x='11.2' y='8.4' width='2.6' height='4.6' rx='1.3' fill='%23ffffff'/%3E%3C/svg%3E",
@@ -115,7 +42,7 @@ function titleText(item) {
 }
 
 /** One platform glyph or a neutral fallback, with a localized name as
- *  the hover/reader label. The title runs in a .tscroll that never
+ *  the hover/reader label. The title runs in a .marquee that never
  *  wraps; enhanceMarquee() appends the hidden duplicate only when the
  *  text overflows, so short titles render as a single clean line. */
 function label(item) {
@@ -126,7 +53,7 @@ function label(item) {
   // Multi-part titles read "Title - P2"; single parts stay clean. The
   // suffix lives inside the scrolling text, so it is never squeezed out.
   const part = item.page_count > 1 ? ` - P${item.page}` : "";
-  const run = `<span class="tscroll"><span class="run"><span class="ttext">${esc(titleText(item))}${part}</span></span></span>`;
+  const run = `<span class="marquee"><span class="run"><span class="ttext">${esc(titleText(item))}${part}</span></span></span>`;
   return `${icon}${run}`;
 }
 
@@ -137,7 +64,7 @@ function label(item) {
  * never scroll. Devices without hover (phones) toggle the sweep by
  * tapping the title. */
 function enhanceMarquee(root = document) {
-  root.querySelectorAll(".tscroll").forEach((el) => {
+  root.querySelectorAll(".marquee").forEach((el) => {
     const run = el.firstElementChild;
     if (!run || run.dataset.marqDone) return;
     run.dataset.marqDone = "1";
@@ -153,7 +80,7 @@ function enhanceMarquee(root = document) {
     el.setAttribute("data-scroll", "");
     el.style.setProperty("--mq-end", `${-dist}px`);
     el.style.setProperty("--mq", `${Math.max(6000, Math.round(dist * 22))}ms`);
-    el.closest(".card")?.addEventListener("click", (e) => {
+    el.closest("[data-track]")?.addEventListener("click", (e) => {
       // Touch fallback: no hover, so a tap on the title row toggles it.
       if (!e.target.closest("button") && matchMedia("(hover: none)").matches) {
         e.currentTarget.classList.toggle("scrolling");
@@ -201,9 +128,18 @@ let hostData = false; // false = never loaded, null = fetch failed
 function setSideOpen(open) {
   const sidebar = document.getElementById("sidebar");
   const overlay = document.getElementById("sideOverlay");
+  const wasOpen = sidebar.classList.contains("open");
+  const hadFocus = sidebar.contains(document.activeElement);
   sidebar.classList.toggle("open", open);
   overlay.hidden = !open;
   sidebar.setAttribute("aria-hidden", String(!open));
+  // A closed drawer must not keep focusable children in the tab order.
+  sidebar.inert = !open;
+  if (open && !wasOpen) {
+    document.getElementById("sideClose")?.focus();
+  } else if (!open && wasOpen && hadFocus) {
+    document.getElementById("sideBtn")?.focus();
+  }
 }
 
 function renderHostInfo() {
@@ -242,8 +178,12 @@ async function loadHostInfo() {
 function initSidebar() {
   const btn = document.getElementById("sideBtn");
   if (!btn || !document.getElementById("sidebar")) return;
+  setSideOpen(false);
   document.getElementById("sideClose").addEventListener("click", () => setSideOpen(false));
   document.getElementById("sideOverlay").addEventListener("click", () => setSideOpen(false));
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") setSideOpen(false);
+  });
   btn.addEventListener("click", () => {
     setSideOpen(true);
     loadHostInfo();

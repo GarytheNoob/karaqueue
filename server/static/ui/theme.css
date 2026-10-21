@@ -1,0 +1,1169 @@
+/**
+ * KaraQueue shared theme — both pages, both ports.
+ *
+ * One product face for the guest request page and the host console:
+ * true black ground, elevation by lightness alone (no card borders, no
+ * shadows), one data hue (the lime equaliser on the live track), and
+ * one neutral control set. Served as /ui/theme.css by both servers.
+ *
+ * Sections: tokens · base · shell · bar · panels · setlist · now ·
+ * slip · admin · language switch · drawer · toasts · marquee · phone.
+ */
+
+/* --- Tokens --------------------------------------------------------- */
+:root {
+  color-scheme: dark;
+
+  /* Surfaces are three steps of lightness, never a border or a shadow. */
+  --ground: #000000;
+  --surface: #111112;
+  --raised: #1c1c1e;
+  --raised-2: #262629;
+  --rule: #1b1b1d;
+
+  /* Text: two greys far enough apart to read as two, both ≥4.5:1. */
+  --text: #f4f4f5;
+  --muted: #b4b4b4;
+  --faint: #949494;
+
+  /* The one hue: the live track. Never on buttons, tabs or navigation. */
+  --accent: #c6f24e;
+  --negative: #e5484d;
+  --warning: #e5a93b;
+
+  --radius-panel: 20px;
+  --radius-control: 12px;
+  --radius-chip: 6px;
+
+  --gap: 14px;
+  --pad: 20px;
+  --tap: 44px;
+
+  --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC",
+    "Hiragino Sans GB", "Microsoft YaHei", "Segoe UI", Roboto, system-ui,
+    sans-serif;
+}
+
+/* --- Base ----------------------------------------------------------- */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background: var(--ground);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 14px;
+  line-height: 1.45;
+  -webkit-font-smoothing: antialiased;
+}
+
+h1,
+h2,
+p,
+dl,
+dd,
+ol,
+ul {
+  margin: 0;
+}
+
+ol,
+ul {
+  padding: 0;
+  list-style: none;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+}
+
+img {
+  max-width: 100%;
+}
+
+:focus-visible {
+  outline: 2px solid #ffffff;
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+::selection {
+  background: var(--accent);
+  color: #000;
+}
+
+/* Numbers that update keep their width. */
+.num,
+.pos,
+.dur,
+.count {
+  font-variant-numeric: tabular-nums;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* --- Shell ---------------------------------------------------------- */
+.shell {
+  max-width: 620px;
+  margin: 0 auto;
+  padding: 0 16px 56px;
+}
+
+.shell--wide {
+  max-width: 980px;
+}
+
+.view {
+  display: none;
+}
+
+.view.active {
+  display: block;
+}
+
+/* --- Top bar -------------------------------------------------------- */
+/* 56px, one ground, one 1px rule. It carries the product's name and the
+ * page's tools; nothing else. No gradient, no blur. */
+.bar {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 56px;
+  padding: 8px 0;
+  background: var(--ground);
+  border-bottom: 1px solid var(--rule);
+}
+
+.bar h1 {
+  font-size: 20px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+}
+
+.brand .mark {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  color: var(--text);
+}
+
+.bar-tools {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+
+/* The back link of a secondary view sits in the bar's left slot. */
+.back {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 36px;
+  margin-left: -6px;
+  padding: 0 8px 0 4px;
+  color: var(--muted);
+  font-size: 14px;
+  border-radius: 8px;
+}
+
+.back:hover {
+  color: var(--text);
+}
+
+.back svg {
+  width: 16px;
+  height: 16px;
+}
+
+.icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  background: var(--raised);
+  border: 0;
+  border-radius: 10px;
+  color: var(--muted);
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.icon-btn:hover {
+  background: var(--raised-2);
+  color: var(--text);
+}
+
+.icon-btn:active {
+  background: #2e2e32;
+}
+
+.icon-btn svg {
+  width: 17px;
+  height: 17px;
+}
+
+/* --- Sections ------------------------------------------------------- */
+.sec {
+  margin-top: 30px;
+}
+
+.sec-head {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin-bottom: 10px;
+}
+
+.sec-head h2 {
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: -0.005em;
+}
+
+.sec-head .count {
+  margin-left: auto;
+  color: var(--faint);
+  font-size: 12px;
+}
+
+.hint {
+  max-width: 68ch;
+  margin: -4px 0 10px;
+  color: var(--faint);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+/* The live-track marker: five bars, the only colour on the screen. */
+.eq {
+  display: inline-flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 13px;
+  flex: none;
+}
+
+.eq i {
+  display: block;
+  width: 2px;
+  border-radius: 1px;
+  background: var(--accent);
+}
+
+.eq i:nth-child(1) { height: 5px; }
+.eq i:nth-child(2) { height: 10px; }
+.eq i:nth-child(3) { height: 7px; }
+.eq i:nth-child(4) { height: 13px; }
+.eq i:nth-child(5) { height: 6px; }
+
+/* --- Panels --------------------------------------------------------- */
+.panel {
+  background: var(--surface);
+  border: 0;
+  border-radius: var(--radius-panel);
+  padding: var(--pad);
+}
+
+/* --- Setlist rows --------------------------------------------------- */
+/* A queue row is a line in a running order, not a card: rank, title,
+ * requester, duration, and only the action the row needs. */
+.setlist {
+  margin: 0;
+}
+
+.track {
+  display: flex;
+  gap: 10px;
+  padding: 12px 0;
+  border-top: 1px solid var(--rule);
+}
+
+.setlist .track:first-child,
+.list-plain .track:first-child {
+  border-top: 0;
+  padding-top: 4px;
+}
+
+.pos {
+  flex: none;
+  width: 20px;
+  padding-top: 1px;
+  color: var(--faint);
+  font-size: 12px;
+  font-weight: 500;
+  text-align: right;
+}
+
+.tbody {
+  flex: 1;
+  min-width: 0;
+}
+
+.ttl {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.45;
+}
+
+.chips {
+  display: inline-flex;
+  flex: none;
+  gap: 6px;
+  align-items: center;
+}
+
+.chip {
+  flex: none;
+  padding: 1px 7px;
+  background: var(--raised-2);
+  border-radius: var(--radius-chip);
+  color: var(--text);
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 17px;
+  white-space: nowrap;
+}
+
+.chip--mine,
+.chip--muted {
+  background: transparent;
+  color: var(--muted);
+  box-shadow: inset 0 0 0 1px #333338;
+}
+
+.sub {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 3px;
+  color: var(--faint);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.sub .by {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sub .dur {
+  margin-left: auto;
+  flex: none;
+  padding-left: 4px;
+}
+
+/* Row actions: quiet text until you aim at them. */
+.linkbtn {
+  flex: none;
+  padding: 7px 6px;
+  margin: -7px -6px;
+  background: none;
+  border: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.4;
+  cursor: pointer;
+  border-radius: 6px;
+  transition: color 0.15s ease;
+}
+
+.linkbtn:hover {
+  color: var(--text);
+}
+
+.linkbtn:disabled {
+  color: #6c6c70;
+  cursor: default;
+}
+
+.linkbtn--danger:hover {
+  color: var(--negative);
+}
+
+/* A row's own remove mark, the one icon action in the setlist. */
+.xbtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 30px;
+  height: 30px;
+  margin: -6px -4px -6px 0;
+  padding: 0;
+  background: none;
+  border: 0;
+  border-radius: 7px;
+  color: var(--faint);
+  cursor: pointer;
+  transition: color 0.15s ease, background 0.15s ease;
+}
+
+.xbtn:hover {
+  background: var(--raised);
+  color: var(--negative);
+}
+
+.xbtn svg {
+  width: 13px;
+  height: 13px;
+}
+
+/* --- Empty states --------------------------------------------------- */
+/* A real zero keeps its frame: one sentence in a dashed slot. */
+.empty {
+  padding: 16px;
+  border: 1px dashed #2e2e32;
+  border-radius: 14px;
+  color: var(--faint);
+  font-size: 13px;
+  text-align: center;
+}
+
+.empty--now {
+  background: var(--surface);
+  border: 0;
+  border-radius: var(--radius-panel);
+  padding: 26px 20px;
+}
+
+/* --- Now playing ---------------------------------------------------- */
+.now-title {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 1.35;
+  letter-spacing: -0.01em;
+}
+
+.now-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 7px;
+  color: var(--faint);
+  font-size: 13px;
+}
+
+.now-meta .dur {
+  margin-left: auto;
+}
+
+/* Host console: the live track and the one control beside it. */
+.now-row {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+
+.now-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.list-plain {
+  margin-top: 14px;
+}
+
+/* --- Request slip --------------------------------------------------- */
+.slip {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.field .lbl {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.field input {
+  width: 100%;
+  height: var(--tap);
+  padding: 0 13px;
+  background: var(--raised);
+  border: 1px solid #2c2c30;
+  border-radius: var(--radius-control);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 16px; /* 16px keeps iOS from zooming the page on focus */
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.field input::placeholder {
+  color: #8b8b90;
+}
+
+.field input:hover {
+  border-color: #3a3a3f;
+}
+
+.field input:focus {
+  outline: none;
+  border-color: #6a6a70;
+  background: #202023;
+}
+
+.field input:disabled {
+  color: var(--faint);
+  background: #171719;
+  border-color: #26262a;
+  cursor: not-allowed;
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  height: var(--tap);
+  padding: 0 18px;
+  background: var(--text);
+  border: 0;
+  border-radius: 999px;
+  color: #0a0a0a;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s ease, transform 0.08s ease;
+}
+
+.btn:hover {
+  background: #ffffff;
+}
+
+.btn:active {
+  transform: translateY(1px);
+}
+
+/* A disabled primary stays legible and says why (title/aria). */
+.btn:disabled {
+  background: #232326;
+  color: var(--faint);
+  cursor: not-allowed;
+  transform: none;
+}
+
+.btn--block {
+  width: 100%;
+}
+
+.btn--quiet {
+  background: var(--raised);
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 500;
+  height: 36px;
+  padding: 0 14px;
+}
+
+.btn--quiet:hover {
+  background: var(--raised-2);
+}
+
+.btn svg {
+  width: 15px;
+  height: 15px;
+  flex: none;
+}
+
+/* A quiet row that leads somewhere (played history). */
+.linkrow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: var(--tap);
+  padding: 0 2px;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.linkrow:hover {
+  color: var(--text);
+}
+
+.linkrow .count {
+  margin-left: 2px;
+  color: var(--faint);
+  font-size: 12px;
+}
+
+.linkrow svg {
+  width: 15px;
+  height: 15px;
+  margin-left: auto;
+  color: var(--faint);
+}
+
+/* --- Admin: rules --------------------------------------------------- */
+.rules {
+  padding: 8px var(--pad);
+}
+
+.rule {
+  display: flex;
+  align-items: flex-start;
+  gap: 18px;
+  padding: 16px 0;
+}
+
+.rule + .rule {
+  border-top: 1px solid var(--rule);
+}
+
+.rule-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.rule-title {
+  display: block;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.rule-desc {
+  max-width: 66ch;
+  margin-top: 5px;
+  color: var(--faint);
+  font-size: 13px;
+  line-height: 1.55;
+  white-space: pre-line;
+}
+
+/* Switch: off is a neutral track; on is the status hue on its own dark
+ * tint (a switch is status, not data). */
+.switch {
+  position: relative;
+  flex: none;
+  width: 42px;
+  height: 24px;
+  margin-top: 1px;
+  padding: 0;
+  background: #2c2c30;
+  border: 0;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.switch::after {
+  content: "";
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 18px;
+  height: 18px;
+  background: #8f8f95;
+  border-radius: 50%;
+  transition: transform 0.15s ease, background 0.15s ease;
+}
+
+.switch[aria-checked="true"] {
+  background: #2b3811;
+}
+
+.switch[aria-checked="true"]::after {
+  transform: translateX(18px);
+  background: var(--accent);
+}
+
+.switch:hover::after {
+  background: var(--muted);
+}
+
+.switch[aria-checked="true"]:hover::after {
+  background: #d6ff6b;
+}
+
+/* --- Admin: queue rows ---------------------------------------------- */
+/* The grip is the drag handle (pointer drag + arrow keys); it is a 24px
+ * column of six dots, not a button that competes with the row. */
+.qcard {
+  display: grid;
+  grid-template-columns: 24px 20px minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+  padding: 10px 0;
+  border-top: 1px solid var(--rule);
+  transition: transform 0.15s ease;
+}
+
+.qcard:first-child {
+  border-top: 0;
+  padding-top: 4px;
+}
+
+.grip {
+  align-self: stretch;
+  min-height: 52px;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  border-radius: 7px;
+  cursor: grab;
+  touch-action: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='20' viewBox='0 0 8 20'%3E%3Cg fill='%236f6f75'%3E%3Ccircle cx='2' cy='3' r='1.3'/%3E%3Ccircle cx='6' cy='3' r='1.3'/%3E%3Ccircle cx='2' cy='10' r='1.3'/%3E%3Ccircle cx='6' cy='10' r='1.3'/%3E%3Ccircle cx='2' cy='17' r='1.3'/%3E%3Ccircle cx='6' cy='17' r='1.3'/%3E%3C/g%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: center;
+}
+
+.grip:hover {
+  background-color: var(--raised);
+}
+
+.grip:active {
+  cursor: grabbing;
+  background-color: var(--raised-2);
+}
+
+.grip[aria-disabled="true"] {
+  opacity: 0.35;
+  cursor: default;
+  background-color: transparent;
+}
+
+.qcard.dragging {
+  position: relative;
+  z-index: 5;
+  border-radius: 12px;
+  background: var(--raised);
+  box-shadow: 0 14px 30px rgba(0, 0, 0, 0.55);
+}
+
+.qcard .pos {
+  padding-top: 2px;
+}
+
+.qbody {
+  min-width: 0;
+}
+
+/* --- Language switch ------------------------------------------------ */
+/* Three captions, one neutral thumb: the control that changes the
+ * language must not borrow the data hue. */
+.lang-switch {
+  position: relative;
+  display: inline-flex;
+  padding: 3px;
+  background: var(--raised);
+  border-radius: 999px;
+}
+
+.lang-switch .ls-thumb {
+  position: absolute;
+  top: 3px;
+  bottom: 3px;
+  left: 3px;
+  width: 36px;
+  border-radius: 999px;
+  background: var(--raised-2);
+  transition: transform 0.18s ease;
+}
+
+.lang-switch button {
+  position: relative;
+  z-index: 1;
+  width: 36px;
+  height: 24px;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  border-radius: 999px;
+  color: var(--faint);
+  font-family: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.lang-switch button:hover {
+  color: var(--muted);
+}
+
+.lang-switch button[aria-pressed="true"] {
+  color: var(--text);
+  font-weight: 600;
+}
+
+/* --- LAN drawer ----------------------------------------------------- */
+#sideOverlay {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  background: rgba(0, 0, 0, 0.6);
+}
+
+#sideOverlay[hidden] {
+  display: none;
+}
+
+#sidebar {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 41;
+  width: min(340px, 86vw);
+  padding: var(--pad) var(--pad) calc(var(--pad) + env(safe-area-inset-bottom, 0px));
+  overflow-y: auto;
+  background: var(--surface);
+  transform: translateX(102%);
+  transition: transform 0.22s ease;
+}
+
+#sidebar.open {
+  transform: translateX(0);
+}
+
+.side-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 15px;
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.side-x {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  margin-right: -6px;
+  padding: 0;
+  background: var(--raised);
+  border: 0;
+  border-radius: 9px;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.side-x:hover {
+  background: var(--raised-2);
+  color: var(--text);
+}
+
+.side-x svg {
+  width: 14px;
+  height: 14px;
+}
+
+#sidebar dl {
+  margin-top: 12px;
+}
+
+#sidebar dt {
+  margin-top: 14px;
+  color: var(--faint);
+  font-size: 12px;
+}
+
+#sidebar dd {
+  margin: 3px 0 0;
+  font-size: 14px;
+  word-break: break-all;
+}
+
+#qrBox {
+  display: flex;
+  justify-content: center;
+  margin-top: 18px;
+  padding: 12px;
+  background: #ffffff;
+  border-radius: 14px;
+}
+
+#qrBox svg {
+  display: block;
+  width: 100%;
+  max-width: 216px;
+  height: auto;
+}
+
+.side-hint {
+  margin: 12px 0 0;
+  color: var(--faint);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+/* --- Toasts --------------------------------------------------------- */
+.toasts {
+  position: fixed;
+  right: 0;
+  bottom: calc(18px + env(safe-area-inset-bottom, 0px));
+  left: 0;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  pointer-events: none;
+}
+
+.toast {
+  max-width: 84vw;
+  padding: 10px 14px;
+  background: var(--raised);
+  border-radius: 12px;
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.45;
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.55);
+  pointer-events: auto;
+  cursor: pointer;
+  opacity: 0;
+  transform: translateY(8px);
+  transition: opacity 0.18s ease, transform 0.18s ease;
+}
+
+.toast.in {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.toast.out {
+  opacity: 0;
+  transform: translateY(8px);
+}
+
+.toast::before {
+  content: "";
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-right: 9px;
+  vertical-align: 1px;
+  border-radius: 50%;
+  background: var(--faint);
+}
+
+.toast.ok::before { background: var(--accent); }
+.toast.fail::before { background: var(--negative); }
+.toast.warn::before { background: var(--warning); }
+
+/* --- Track title (icon + single-sweep marquee) --------------------- */
+.picon {
+  width: 16px;
+  height: 16px;
+  flex: none;
+  align-self: center;
+  border-radius: 4px;
+}
+
+.now-title .picon {
+  width: 18px;
+  height: 18px;
+}
+
+/* A title keeps its natural width so a chip sits right after it; only a
+ * title wider than its row shrinks (and then sweeps on hover/tap). */
+.marquee {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+}
+
+/* Idle titles render from their start; a hovering/tapped title sweeps
+ * once to its end and stays there (fill: forwards). Only titles that
+ * enhanceMarquee() found overflowing carry [data-scroll]. */
+.marquee .run {
+  display: inline-flex;
+  white-space: nowrap;
+  will-change: transform;
+}
+
+/* A title too long for its row fades at the right edge instead of
+ * stopping mid-word: the fade is the only cue that more exists, and it
+ * clears while the title sweeps. */
+.marquee[data-scroll] {
+  -webkit-mask-image: linear-gradient(to right, #000 86%, transparent);
+  mask-image: linear-gradient(to right, #000 86%, transparent);
+}
+
+.marquee[data-scroll]:hover,
+[data-track].scrolling .marquee[data-scroll] {
+  -webkit-mask-image: none;
+  mask-image: none;
+}
+
+.marquee .run .ttext:not(:last-child) {
+  padding-right: 2.2em;
+}
+
+.marquee[data-scroll]:hover .run,
+[data-track].scrolling .marquee[data-scroll] .run {
+  animation: mq var(--mq, 9s) linear 1 forwards;
+  animation-play-state: running;
+}
+
+@keyframes mq {
+  from { transform: translateX(0); }
+  to { transform: translateX(var(--mq-end, -100%)); }
+}
+
+/* --- Request page: desktop ----------------------------------------- */
+/* Guests arrive by QR on a phone; on a laptop the slip gets its own
+ * column so the running order can use the width. */
+.split {
+  margin-top: 20px;
+}
+
+.split__main > .sec:first-child {
+  margin-top: 0;
+}
+
+@media (max-width: 879px) {
+  .split__aside {
+    margin-bottom: 26px;
+  }
+}
+
+@media (min-width: 880px) {
+  .shell--split {
+    max-width: 980px;
+  }
+
+  .split {
+    display: grid;
+    grid-template-columns: 360px minmax(0, 1fr);
+    gap: 36px;
+    align-items: start;
+  }
+
+  .split__aside {
+    position: sticky;
+    top: 84px;
+  }
+}
+
+/* --- Admin: desktop ------------------------------------------------- */
+@media (min-width: 760px) {
+  .shell--wide {
+    padding: 0 24px 64px;
+  }
+}
+
+@media (min-width: 900px) {
+  .admin-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr);
+    gap: 0 40px;
+    align-items: start;
+  }
+
+  .admin-grid .span-2 {
+    grid-column: 1 / -1;
+  }
+}
+
+/* --- Phone ---------------------------------------------------------- */
+/* The bar keeps the mic mark and the page's own name; the wordmark
+ * returns as soon as the row has room for it. Below 600px it never has
+ * room in English, and the mark already carries the brand. */
+@media (max-width: 600px) {
+  .wordmark {
+    display: none;
+  }
+
+  body {
+    font-size: 14px;
+  }
+
+  .bar h1 {
+    font-size: 18px;
+  }
+
+  .sec {
+    margin-top: 26px;
+  }
+
+  .now-title {
+    font-size: 17px;
+  }
+
+  .qcard {
+    grid-template-columns: 22px 16px minmax(0, 1fr);
+    gap: 8px;
+  }
+
+  .rule {
+    gap: 14px;
+  }
+
+  /* The host's skip sits under the live track on a phone, full width,
+     instead of squeezing a long title. */
+  .now-row {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 14px;
+  }
+
+  .now-row .btn {
+    width: 100%;
+    height: var(--tap);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}

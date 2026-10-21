@@ -3,124 +3,106 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="theme-color" content="#000000" />
 <title>KaraQueue 点歌</title>
-<style>
-  :root { color-scheme: dark; }
-  * { box-sizing: border-box; }
-  body {
-    margin: 0; font-family: system-ui, -apple-system, "PingFang SC", sans-serif;
-    background: #101014; color: #e8e8ee; min-height: 100vh;
-  }
-  main { max-width: 560px; margin: 0 auto; padding: 20px 16px 48px; }
-  h2 { font-size: 14px; margin: 24px 0 8px; color: #9aa; letter-spacing: .05em; }
-  /* Three-slot topbar: back or big title on the left, the title can
-   * center on a secondary view, page controls all the way right. */
-  .topbar {
-    display: grid; grid-template-columns: 1fr auto 1fr; align-items: center;
-    gap: 8px; margin: -6px 0 14px; padding: 12px 0 2px;
-    position: sticky; top: 0; z-index: 30;
-    background: linear-gradient(#101014 82%, rgba(16,16,20,0));
-  }
-  .topbar h1 { font-size: 19px; margin: 0; white-space: nowrap; }
-  .topbar .tb-right { grid-column: 3; justify-self: end; }
-  .topbar .back { grid-column: 1; justify-self: start; }
-  form { display: flex; flex-direction: column; gap: 8px; }
-  .history-link {
-    display: block; margin-top: 14px; text-align: center; text-decoration: none;
-    background: #17171d; border: 1px dashed #33333d; border-radius: 10px;
-    padding: 10px; color: #7ab; font-size: 13px;
-  }
-  .view { display: none; }
-  .view.active { display: block; }
-  .back {
-    color: #7ab; text-decoration: none; font-size: 14px; flex: none;
-    padding: 8px 12px 8px 0; /* thumb-wide touch target from the edge */
-  }
-  input {
-    background: #1c1c22; border: 1px solid #33333d; border-radius: 10px;
-    padding: 12px 14px; color: inherit; font-size: 16px; width: 100%;
-  }
-  input:focus { outline: none; border-color: #58a6ff; }
-  button {
-    background: #2f6fed; color: #fff; border: 0; border-radius: 10px;
-    padding: 12px; font-size: 16px; font-weight: 600; cursor: pointer;
-  }
-  button:disabled { opacity: .5; cursor: not-allowed; }
-  input:disabled { opacity: .5; }
-  .card {
-    background: #17171d; border: 1px solid #26262e; border-radius: 12px;
-    padding: 10px 12px; margin-bottom: 8px;
-  }
-  .card .title { font-size: 14px; line-height: 1.5; display: flex; align-items: center; }
-  .card .meta { font-size: 12px; color: #888; margin-top: 5px; display: flex; justify-content: space-between; align-items: baseline; min-height: 17px; }
-  .card.now { border-color: #2f6fed; }
-  .card.next { border-color: #e0a33f; }
-  .tag {
-    font-size: 11px; background: #2f6fed; color: #fff; border-radius: 4px;
-    padding: 1px 6px; flex: none;
-  }
-  .badges { display: inline-flex; gap: 6px; margin-left: auto; flex: none; align-items: center; }
-  .tag.done { background: #444; color: #aaa; }
-  .tag.next { background: #e0a33f; color: #2b1d00; }
-  .tag.mine { background: #2fa25c; color: #fff; }
-  .actions { display: flex; gap: 8px; margin-top: 8px; }
-  .mini {
-    font-size: 12px; font-weight: 600; padding: 5px 10px;
-    border-radius: 8px; background: #26262e; color: #eee;
-  }
-  .mini:active { background: #33333d; }
-  .idx {
-    color: #67718a; font-size: 12px; font-weight: 600; flex: none;
-    margin-right: 6px; font-variant-numeric: tabular-nums;
-  }
-  .empty { color: #666; font-size: 13px; padding: 6px 2px; }
-  .row-head { display: flex; justify-content: space-between; align-items: baseline; }
-  .row-head small { color: #666; }
-  .hdr-right { display: inline-flex; gap: 10px; align-items: center; color: #666; }
-</style>
+<link rel="stylesheet" href="/ui/theme.css" />
 </head>
 <body>
-<main>
+<main class="shell shell--split">
   <section id="view-main" class="view active">
-    <header class="topbar">
-      <h1 data-i18n="index.title">KaraQueue 点歌</h1>
-      <span class="tb-right">
+    <!-- 56px bar: the product's mark and name, then the page's own tools.
+         Same bar on both pages, one ground, one rule. -->
+    <header class="bar">
+      <div class="brand">
+        <svg class="mark" viewBox="0 0 20 20" fill="none" stroke="currentColor"
+             stroke-width="1.6" stroke-linecap="round" aria-hidden="true" focusable="false">
+          <rect x="7.1" y="2.2" width="5.8" height="9.6" rx="2.9" />
+          <path d="M4.4 9.2a5.6 5.6 0 0 0 11.2 0" />
+          <path d="M10 14.8v3.1M7.4 17.9h5.2" />
+        </svg>
+        <h1><span class="wordmark">KaraQueue </span><span data-i18n="index.title_short">点歌</span></h1>
+      </div>
+      <div class="bar-tools">
         <span id="langSwitch"></span>
-        <button id="sideBtn" class="side-btn" aria-label="局域网接入" type="button">☰</button>
-      </span>
+        <button id="sideBtn" class="icon-btn" aria-label="局域网接入" type="button">
+          <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"
+               stroke-linecap="round" aria-hidden="true" focusable="false">
+            <path d="M2.6 7.4a13.2 13.2 0 0 1 14.8 0" />
+            <path d="M5.5 10.8a8.6 8.6 0 0 1 9 0" />
+            <path d="M8.3 14.1a4.1 4.1 0 0 1 3.4 0" />
+            <circle cx="10" cy="17" r="0.9" fill="currentColor" stroke="none" />
+          </svg>
+        </button>
+      </div>
     </header>
 
-    <form id="f">
-      <input id="by" autocomplete="nickname" data-i18n-placeholder="index.by_placeholder" />
-      <input id="input" required data-i18n-placeholder="index.input_placeholder" />
-      <button id="btn" type="submit" data-i18n="index.submit">加入队列</button>
-    </form>
+    <div class="split">
+      <!-- The slip. Requesting is why the page exists, so it opens the
+           page on a phone; on a laptop it keeps its own column. -->
+      <div class="split__aside">
+        <form id="f" class="panel slip">
+          <label class="field" for="by">
+            <span class="lbl" data-i18n="index.by_label">你的昵称</span>
+            <input id="by" name="by" autocomplete="nickname"
+                   data-i18n-placeholder="index.by_placeholder" />
+          </label>
+          <label class="field" for="input">
+            <span class="lbl" data-i18n="index.input_label">歌曲链接</span>
+            <input id="input" name="input" required
+                   data-i18n-placeholder="index.input_placeholder" />
+          </label>
+          <button id="btn" class="btn btn--block" type="submit" data-i18n="index.submit">加入队列</button>
+        </form>
+        <a class="linkrow" href="#/history">
+          <span data-i18n="index.history_link">已播历史</span>
+          <span class="count" id="historyCount"></span>
+          <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"
+               stroke-linecap="round" aria-hidden="true" focusable="false"><path d="M8 4.5l6 5.5-6 5.5" /></svg>
+        </a>
+      </div>
 
-    <a class="history-link" href="#/history"><span data-i18n="index.history_link">已播历史</span> <span id="historyCount"></span> ›</a>
+      <div class="split__main">
+        <section class="sec">
+          <div class="sec-head">
+            <span class="eq" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></span>
+            <h2 data-i18n="head.now_playing">正在播放</h2>
+          </div>
+          <div id="now"></div>
+        </section>
 
-    <h2 data-i18n="head.now_playing">正在播放</h2>
-    <div id="now"></div>
-
-    <h2 class="row-head"><span data-i18n="head.queue">队列</span><small id="queueCount"></small></h2>
-    <div id="queue"></div>
+        <section class="sec">
+          <div class="sec-head">
+            <h2 data-i18n="head.queue">队列</h2>
+            <span class="count" id="queueCount"></span>
+          </div>
+          <div id="queue"></div>
+        </section>
+      </div>
+    </div>
   </section>
 
   <section id="view-history" class="view">
-    <header class="topbar">
-      <a class="back" href="#/" data-i18n="index.back">‹ 返回点歌</a>
+    <header class="bar">
+      <a class="back" href="#/">
+        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"
+             stroke-linecap="round" aria-hidden="true" focusable="false"><path d="M12 4.5L6 10l6 5.5" /></svg>
+        <span data-i18n="index.back">返回点歌</span>
+      </a>
       <h1 data-i18n="head.history">已播历史</h1>
-      <span></span>
     </header>
-    <div id="history"></div>
+    <div id="history" class="list-plain"></div>
   </section>
 </main>
 
-<!-- LAN access sidebar: how guests reach this page with a phone. -->
+<!-- LAN access drawer: how guests reach this page with a phone. -->
 <div id="sideOverlay" hidden></div>
 <aside id="sidebar" aria-hidden="true">
   <div class="side-head">
     <span data-i18n="side.title">局域网接入</span>
-    <button id="sideClose" class="side-x" type="button" aria-label="关闭">×</button>
+    <button id="sideClose" class="side-x" type="button" aria-label="关闭">
+      <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"
+           stroke-linecap="round" aria-hidden="true" focusable="false"><path d="M5 5l10 10M15 5L5 15" /></svg>
+    </button>
   </div>
   <dl>
     <dt data-i18n="side.wifi">Wi-Fi 名称</dt>
@@ -159,24 +141,42 @@ const UID = (() => {
   return v;
 })();
 
-function card(item, { now = false, next = false, index = 0, withdraw = false } = {}) {
-  // "Mine" badge (green) marks every track this browser requested,
-  // everywhere: now playing, queue and history. Badges dock top-right;
-  // the title keeps the top-left corner, icon first.
+/* One line of the running order: rank, title, requester, duration. The
+ * chips carry identity (mine) and the next slot; they never repeat the
+ * section heading. History rows pass `index` and no action. */
+function trackRow(item, { next = false, index = 0, withdraw = false } = {}) {
   const mine = !!item.requester_uid && item.requester_uid === UID;
-  const mineTag = mine ? `<span class="tag mine">${t("tag.mine")}</span>` : "";
-  const tag = now
-    ? `<span class="tag">NOW</span>${mineTag}`
-    : next
-      ? `<span class="tag next">NEXT</span>${mineTag}`
-      : `${mineTag}${item.status === "played" || item.status === "skipped"
-          ? `<span class="tag done">${t(item.status === "skipped" ? "tag.skipped" : "tag.played")}</span>`
-          : ""}`;
-  const idx = index ? `<span class="idx">${index}</span>` : "";
-  return `<div class="card ${now ? "now" : next ? "next" : ""}">
-    <div class="title">${label(item)}<span class="badges">${tag}</span></div>
-    <div class="meta"><span>${idx}${esc(t("card.requested_by", { by: item.requested_by }))}</span><span>${item.duration_s ? fmtDur(item.duration_s) : ""}</span></div>
-    ${withdraw && mine ? `<div class="actions"><button class="mini" data-withdraw="${esc(item.id)}" title="${esc(t("index.withdraw_title"))}">${esc(t("index.withdraw"))}</button></div>` : ""}
+  const chips = [
+    next ? `<span class="chip">${esc(t("tag.next"))}</span>` : "",
+    mine ? `<span class="chip chip--mine">${esc(t("tag.mine"))}</span>` : "",
+    item.status === "skipped" ? `<span class="chip chip--muted">${esc(t("tag.skipped"))}</span>` : "",
+  ].join("");
+  const action = withdraw && mine
+    ? `<button class="linkbtn" data-withdraw="${esc(item.id)}" title="${esc(t("index.withdraw_title"))}">${esc(t("index.withdraw"))}</button>`
+    : "";
+  return `<div class="track" data-track>
+    ${index ? `<span class="pos">${index}</span>` : ""}
+    <div class="tbody">
+      <div class="ttl">${label(item)}${chips ? `<span class="chips">${chips}</span>` : ""}</div>
+      <div class="sub">
+        <span class="by">${esc(t("card.requested_by", { by: item.requested_by }))}</span>
+        ${action}
+        <span class="dur">${item.duration_s ? fmtDur(item.duration_s) : ""}</span>
+      </div>
+    </div>
+  </div>`;
+}
+
+/* The live track is the page's biggest block and the only raised panel
+ * under "正在播放": one title at 18px, requester and duration beneath. */
+function nowPanel(item) {
+  const mine = !!item.requester_uid && item.requester_uid === UID;
+  return `<div class="panel now" data-track>
+    <div class="now-title">${label(item)}${mine ? `<span class="chips"><span class="chip chip--mine">${esc(t("tag.mine"))}</span></span>` : ""}</div>
+    <div class="now-meta">
+      <span>${esc(t("card.requested_by", { by: item.requested_by }))}</span>
+      <span class="dur">${item.duration_s ? fmtDur(item.duration_s) : ""}</span>
+    </div>
   </div>`;
 }
 
@@ -199,16 +199,16 @@ function applyFairMode() {
 
 function render(state) {
   lastState = state;
-  $("queueCount").textContent = t("index.queue_count", { n: state.queue.length });
-  $("historyCount").textContent = state.history.length ? `(${state.history.length})` : "";
-  $("now").innerHTML = state.current ? card(state.current, { now: true }) : `<div class="empty">${t("empty.now")}</div>`;
+  $("queueCount").textContent = state.queue.length ? t("index.queue_count", { n: state.queue.length }) : "";
+  $("historyCount").textContent = state.history.length ? String(state.history.length) : "";
+  $("now").innerHTML = state.current ? nowPanel(state.current) : `<div class="empty empty--now">${t("empty.now")}</div>`;
   $("queue").innerHTML = state.queue.length
-    ? state.queue.map((i, idx) => card(i, { next: idx === 0, withdraw: true })).join("")
+    ? `<div class="setlist">${state.queue.map((i, idx) => trackRow(i, { index: idx + 1, next: idx === 0, withdraw: true })).join("")}</div>`
     : `<div class="empty">${t("empty.queue")}</div>`;
   // History is stored newest-first on the server; display oldest-first so
   // index 1 is the first song ever played, newest at the bottom.
   $("history").innerHTML = state.history.length
-    ? [...state.history].reverse().map((item, idx) => card(item, { index: idx + 1 })).join("")
+    ? state.history.slice().reverse().map((item, idx) => trackRow(item, { index: idx + 1 })).join("")
     : `<div class="empty">${t("empty.history")}</div>`;
   applyFairMode();
   enhanceMarquee();

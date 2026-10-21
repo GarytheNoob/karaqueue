@@ -3,133 +3,93 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="theme-color" content="#000000" />
 <title>KaraQueue 管理后台</title>
-<style>
-  /* Shares the card design language of the request page. */
-  :root { color-scheme: dark; }
-  * { box-sizing: border-box; }
-  body { margin: 0; font-family: system-ui, -apple-system, "PingFang SC", sans-serif; background: #101014; color: #e8e8ee; min-height: 100vh; }
-  main { max-width: 560px; margin: 0 auto; padding: 20px 16px 48px; }
-  h2 { font-size: 14px; margin: 24px 0 8px; color: #9aa; letter-spacing: .05em; }
-  /* Same three-slot topbar as the request page. */
-  .topbar {
-    display: grid; grid-template-columns: 1fr auto 1fr; align-items: center;
-    gap: 8px; margin: -6px 0 14px; padding: 12px 0 2px;
-    position: sticky; top: 0; z-index: 30;
-    background: linear-gradient(#101014 82%, rgba(16,16,20,0));
-  }
-  .topbar h1 { font-size: 19px; margin: 0; white-space: nowrap; }
-  .topbar .hdr-right { grid-column: 3; justify-self: end; color: #666; }
-  input[type="text"] {
-    background: #1c1c22; border: 1px solid #33333d; border-radius: 10px;
-    padding: 10px 14px; color: inherit; font-size: 14px; width: 100%;
-  }
-  input:focus { outline: none; border-color: #58a6ff; }
-  button {
-    background: #2f6fed; color: #fff; border: 0; border-radius: 10px;
-    padding: 12px; font-size: 16px; font-weight: 600; cursor: pointer;
-  }
-  button.mini {
-    background: #1c1c22; border: 1px solid #3a3a44; color: #bbb;
-    font-size: 13px; font-weight: 400; padding: 6px 10px; width: auto;
-  }
-  button.mini.danger { color: #f66; border-color: #633; }
-  button.mini:disabled { opacity: .35; cursor: default; }
-  .card { background: #17171d; border: 1px solid #26262e; border-radius: 12px; padding: 10px 12px; margin-bottom: 8px; }
-  .card.now { border-color: #2f6fed; }
-  .card .title { font-size: 14px; line-height: 1.5; display: flex; align-items: center; }
-  .card .meta { font-size: 12px; color: #888; margin-top: 5px; display: flex; justify-content: space-between; align-items: baseline; min-height: 17px; }
-  .tag { font-size: 11px; background: #2f6fed; color: #fff; border-radius: 4px; padding: 1px 6px; margin-right: 6px; vertical-align: 2px; }
-  .tag.next { background: #e0a33f; color: #2b1d00; }
-  .tag.done { background: #444; color: #aaa; }
-  .card.next { border-color: #e0a33f; }
-  /* Queue cards are flex rows: grip | body | remove. */
-  .qcard { display: flex; align-items: stretch; gap: 5px; }
-  .qcard .qbody { flex: 1; min-width: 0; padding: 1px 0; }
-  .qcard .xbtn { flex: none; align-self: stretch; width: 34px; padding: 0 8px; }
-  .grip {
-    align-self: stretch; flex: 0 0 24px;
-    display: flex; align-items: center; justify-content: center;
-    border: 0; background: #1c1c22; border-radius: 8px; cursor: grab;
-    padding: 0; touch-action: none; min-height: 52px;
-  }
-  /* Grip: three single dots stacked vertically, fixed size — the tiles
-   * are sized so the dots never clip, and the block never stretches. */
-  .grip::before {
-    content: ""; display: block; width: 5px; height: 36px; flex: none;
-    background-image: radial-gradient(circle, #5a6070 1.5px, transparent 1.9px);
-    background-size: 5px 12px; background-position: center; background-repeat: repeat;
-  }
-  .grip:hover { background: #22222b; }
-  .grip:active { cursor: grabbing; background: #2a2a35; }
-  .grip:focus-visible { box-shadow: 0 0 0 2px #58a6ff55; outline: none; }
-  .grip[aria-disabled="true"] { opacity: .3; cursor: default; }
-  .qcard.dragging { transition: none; position: relative; box-shadow: 0 10px 24px rgba(0,0,0,.5); opacity: .95; }
-  .qcard { transition: transform .15s ease; }
-  .idx { color: #67718a; font-size: 12px; font-weight: 600; margin-right: 7px; font-variant-numeric: tabular-nums; }
-  .empty { color: #666; font-size: 13px; padding: 6px 2px; }
-  .actions { margin-top: 8px; display: flex; gap: 6px; }
-  .configbox { background: #17171d; border: 1px solid #26262e; border-radius: 12px; padding: 12px; font-size: 14px; }
-  .configbox + .configbox { margin-top: 10px; }
-  .configbox .head { display: grid; grid-template-columns: 1fr auto; gap: 10px; align-items: center; }
-  .configbox .head label { min-width: 0; }
-  /* Toggle switch: track + knob, green when on. The knob's soft drop
-   * shadow is the only skeuomorphism on the page. */
-  .switch {
-    position: relative; width: 42px; height: 24px; flex: none;
-    border-radius: 999px; background: #26262e; border: 1px solid #33333d;
-    cursor: pointer; transition: background .15s ease, border-color .15s ease; padding: 0;
-  }
-  .switch::after {
-    content: ""; position: absolute; top: 2px; left: 2px; width: 18px; height: 18px;
-    border-radius: 50%; background: #7c8394; box-shadow: 0 1px 3px rgba(0,0,0,.5);
-    transition: transform .15s ease, background .15s ease;
-  }
-  .switch[aria-checked="true"] { background: #2fa25c; border-color: #2fa25c; }
-  .switch[aria-checked="true"]::after { transform: translateX(18px); background: #fff; }
-  .switch:focus-visible { box-shadow: 0 0 0 2px #58a6ff55; outline: none; }
-  .configbox .desc { color: #778; font-size: 12px; margin-top: 6px; line-height: 1.5; }
-  .hint { color: #778; font-size: 12px; margin-top: 6px; line-height: 1.5; }
-  .desc[data-i18n] { white-space: pre-line; }
-</style>
+<link rel="stylesheet" href="/ui/theme.css" />
 </head>
 <body>
-<main>
-  <header class="topbar">
-    <h1 data-i18n="admin.title">KaraQueue 管理后台</h1>
-    <span class="hdr-right">
+<main class="shell shell--wide">
+  <!-- Same bar as the request page: the product's mark and name, then the
+       page's tools. "管理后台" says what the screen is, not who you are. -->
+  <header class="bar">
+    <div class="brand">
+      <svg class="mark" viewBox="0 0 20 20" fill="none" stroke="currentColor"
+           stroke-width="1.6" stroke-linecap="round" aria-hidden="true" focusable="false">
+        <rect x="7.1" y="2.2" width="5.8" height="9.6" rx="2.9" />
+        <path d="M4.4 9.2a5.6 5.6 0 0 0 11.2 0" />
+        <path d="M10 14.8v3.1M7.4 17.9h5.2" />
+      </svg>
+      <h1><span class="wordmark">KaraQueue </span><span data-i18n="admin.title_short">管理后台</span></h1>
+    </div>
+    <div class="bar-tools">
       <span id="langSwitch"></span>
-      <button id="sideBtn" class="side-btn" aria-label="局域网接入" type="button">☰</button>
-    </span>
+      <button id="sideBtn" class="icon-btn" aria-label="局域网接入" type="button">
+        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"
+             stroke-linecap="round" aria-hidden="true" focusable="false">
+          <path d="M2.6 7.4a13.2 13.2 0 0 1 14.8 0" />
+          <path d="M5.5 10.8a8.6 8.6 0 0 1 9 0" />
+          <path d="M8.3 14.1a4.1 4.1 0 0 1 3.4 0" />
+          <circle cx="10" cy="17" r="0.9" fill="currentColor" stroke="none" />
+        </svg>
+      </button>
+    </div>
   </header>
 
-  <h2 data-i18n="head.now_playing">正在播放</h2>
-  <div id="now"></div>
-  <div class="actions"><button class="mini" id="skip" data-i18n="admin.skip">跳过当前，直接播下一首</button></div>
+  <div class="admin-grid">
+    <!-- 1. What is on stage, and the host's most frequent job beside it. -->
+    <section class="sec span-2">
+      <div class="sec-head">
+        <span class="eq" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></span>
+        <h2 data-i18n="head.now_playing">正在播放</h2>
+      </div>
+      <div id="now"></div>
+    </section>
 
-  <h2 data-i18n="admin.rules_head">点歌规则</h2>
-  <div class="configbox">
-    <div class="head">
-      <label for="allowQueuedDuplicates" data-i18n="admin.dup_label">允许队列中重复点同一首歌</label>
-      <button type="button" class="switch" id="allowQueuedDuplicates" role="switch" aria-checked="false"></button>
-    </div>
-    <div class="desc" data-i18n="admin.dup_desc">关闭：同一首歌重复提交会被拒绝（正在播放/已在队列中）。
+    <!-- 2. The running order: the screen's working list. -->
+    <section class="sec">
+      <div class="sec-head">
+        <h2 data-i18n="head.queue">队列</h2>
+        <span class="count" id="queueCount"></span>
+      </div>
+      <div class="hint" data-i18n="admin.queue_hint">拖动左侧把手调整顺序，或用键盘方向键；「提前」把这首歌移到队首，「移出」把它撤下队列。改动实时同步到大屏和所有点歌页。</div>
+      <div id="queue"></div>
+    </section>
+
+    <!-- 3. Played history, with the one-tap re-request. -->
+    <section class="sec">
+      <div class="sec-head">
+        <h2 data-i18n="head.history">已播历史</h2>
+        <span class="count" id="historyCount"></span>
+      </div>
+      <div id="history"></div>
+    </section>
+
+    <!-- 4. Rules change once a night: they close the page, not open it. -->
+    <section class="sec span-2">
+      <div class="sec-head">
+        <h2 data-i18n="admin.rules_head">点歌规则</h2>
+      </div>
+      <div class="panel rules">
+        <div class="rule">
+          <div class="rule-main">
+            <label class="rule-title" for="allowQueuedDuplicates" data-i18n="admin.dup_label">允许队列中重复点同一首歌</label>
+            <div class="rule-desc" data-i18n="admin.dup_desc">关闭：同一首歌重复提交会被拒绝（正在播放/已在队列中）。
 开启：同一首歌可以在排队里出现多次。</div>
+          </div>
+          <button type="button" class="switch" id="allowQueuedDuplicates" role="switch"
+                  aria-checked="false"></button>
+        </div>
+        <div class="rule">
+          <div class="rule-main">
+            <label class="rule-title" for="oneSongPerGuest" data-i18n="admin.fair_label">公平轮唱 · 每人限点一首</label>
+            <div class="rule-desc" data-i18n="admin.fair_desc">开启后每人（按浏览器 Cookie 识别，不受改昵称影响）同时只能有一首在唱或在排，等自己那首唱完才能再点；被锁定期间，点歌页上该客人的「加入队列」按钮置灰、昵称输入框锁定。</div>
+          </div>
+          <button type="button" class="switch" id="oneSongPerGuest" role="switch"
+                  aria-checked="false"></button>
+        </div>
+      </div>
+    </section>
   </div>
-  <div class="configbox">
-    <div class="head">
-      <label for="oneSongPerGuest" data-i18n="admin.fair_label">公平轮唱 · 每人限点一首</label>
-      <button type="button" class="switch" id="oneSongPerGuest" role="switch" aria-checked="false"></button>
-    </div>
-    <div class="desc" data-i18n="admin.fair_desc">开启后每人（按浏览器 Cookie 识别，不受改昵称影响）同时只能有一首在唱或在排，等自己那首唱完才能再点；被锁定期间，点歌页上该客人的「加入队列」按钮置灰、昵称输入框锁定。</div>
-  </div>
-
-  <h2 data-i18n="head.queue">队列</h2>
-  <div class="hint" data-i18n="admin.queue_hint">⤒ 提前到队首 · ↑↓ 调整顺序 · ✕ 移出队列。改动实时广播到大屏和所有点歌页。</div>
-  <div id="queue"></div>
-
-  <h2 data-i18n="head.history">已播历史</h2>
-  <div id="history"></div>
 </main>
 
 <!-- LAN access drawer, shared with the request page. -->
@@ -137,7 +97,10 @@
 <aside id="sidebar" aria-hidden="true">
   <div class="side-head">
     <span data-i18n="side.title">局域网接入</span>
-    <button id="sideClose" class="side-x" type="button" aria-label="关闭">×</button>
+    <button id="sideClose" class="side-x" type="button" aria-label="关闭">
+      <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"
+           stroke-linecap="round" aria-hidden="true" focusable="false"><path d="M5 5l10 10M15 5L5 15" /></svg>
+    </button>
   </div>
   <dl>
     <dt data-i18n="side.wifi">Wi-Fi 名称</dt>
@@ -186,53 +149,81 @@ async function mutate(path, body) {
   return data;
 }
 
-function card(item, { now = false, next = false, index = 0, controls = null } = {}) {
-  const tag = now
-    ? `<span class="tag">NOW</span>`
-    : next
-      ? `<span class="tag next">NEXT</span>`
-      : item.status === "played" || item.status === "skipped"
-        ? `<span class="tag done">${t(item.status === "skipped" ? "tag.skipped" : "tag.played")}</span>`
-        : "";
-  const idx = index ? `<span class="idx">${index}</span>` : "";
-  const line = (extraRow = "") => `
-    <div class="title">${label(item)}<span class="badges">${tag}</span></div>
-    <div class="meta"><span>${idx}${esc(t("card.requested_by", { by: item.requested_by }))}</span><span>${item.duration_s ? fmtDur(item.duration_s) : ""}</span></div>
-    ${extraRow}`;
-  let row = "";
+const X_ICON = `<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2"
+  stroke-linecap="round" aria-hidden="true" focusable="false"><path d="M5 5l10 10M15 5L5 15" /></svg>`;
+
+/* One line of the running order. Queue rows add the drag handle, the rank
+ * and the two host actions; history rows keep the re-request. */
+function row(item, { index = 0, controls = null } = {}) {
+  const next = controls === "queue" && index === 1;
+  const chips = [
+    next ? `<span class="chip">${esc(t("tag.next"))}</span>` : "",
+    item.status === "skipped" ? `<span class="chip chip--muted">${esc(t("tag.skipped"))}</span>` : "",
+  ].join("");
+  const chipsHtml = chips ? `<span class="chips">${chips}</span>` : "";
+  let actions = "";
   if (controls === "queue") {
-    row = `<div class="actions">
-      <button class="mini" data-move="top" data-id="${esc(item.id)}" ${index === 1 ? "disabled" : ""}>${esc(t("admin.btn.top"))}</button>
-    </div>`;
+    actions = `<button class="linkbtn" data-move="top" data-id="${esc(item.id)}"
+        ${index === 1 ? "disabled" : ""}>${esc(t("admin.btn.top"))}</button>
+      <button class="xbtn" data-del="${esc(item.id)}" title="${esc(t("admin.btn.remove"))}"
+        aria-label="${esc(t("admin.btn.remove"))}">${X_ICON}</button>`;
   } else if (controls === "history") {
-    row = `<div class="actions"><button class="mini" data-rerequest="${esc(item.id)}">${esc(t("admin.btn.rerequest"))}</button></div>`;
+    actions = `<button class="linkbtn" data-rerequest="${esc(item.id)}">${esc(t("admin.btn.rerequest"))}</button>`;
   }
+  const body = `
+    <div class="ttl">${label(item)}${chipsHtml}</div>
+    <div class="sub">
+      <span class="by">${esc(t("card.requested_by", { by: item.requested_by }))}</span>
+      ${actions}
+      <span class="dur">${item.duration_s ? fmtDur(item.duration_s) : ""}</span>
+    </div>`;
+
   if (controls === "queue") {
-    return `<div class="card qcard ${next ? "next" : ""}" data-qid="${esc(item.id)}">
-      <button class="grip" type="button" aria-label="${esc(t("admin.drag_hand"))}" ${lastState && lastState.queue.length < 2 ? 'aria-disabled="true"' : ""}></button>
-      <div class="qbody">${line(row)}</div>
-      <button class="mini danger xbtn" data-del="${esc(item.id)}" title="${esc(t("admin.btn.remove"))}">✕</button>
+    return `<div class="qcard" data-qid="${esc(item.id)}">
+      <button class="grip" type="button" aria-label="${esc(t("admin.drag_hand"))}"
+        ${lastState && lastState.queue.length < 2 ? 'aria-disabled="true"' : ""}></button>
+      <span class="pos">${index}</span>
+      <div class="qbody">${body}</div>
     </div>`;
   }
-  return `<div class="card ${now ? "now" : next ? "next" : ""}">${line(row)}</div>`;
+  return `<div class="track" data-track>
+    <span class="pos">${index}</span>
+    <div class="tbody">${body}</div>
+  </div>`;
+}
+
+/* The live track, closed by the one control the host reaches for all
+ * night: skip. It is a quiet button, not a filled primary, so a stray
+ * thumb never ends a song. */
+function nowPanel(item) {
+  return `<div class="panel now" data-track>
+    <div class="now-row">
+      <div class="now-main">
+        <div class="now-title">${label(item)}</div>
+        <div class="now-meta">
+          <span>${esc(t("card.requested_by", { by: item.requested_by }))}</span>
+          <span class="dur">${item.duration_s ? fmtDur(item.duration_s) : ""}</span>
+        </div>
+      </div>
+      <button class="btn btn--quiet" id="skip" type="button">${esc(t("admin.skip"))}</button>
+    </div>
+  </div>`;
 }
 
 function render(state) {
   lastState = state;
+  $("queueCount").textContent = state.queue.length ? t("index.queue_count", { n: state.queue.length }) : "";
+  $("historyCount").textContent = state.history.length ? String(state.history.length) : "";
   $("now").innerHTML = state.current
-    ? card(state.current, { now: true })
-    : `<div class="empty">${t("empty.now")}</div>`;
+    ? nowPanel(state.current)
+    : `<div class="empty empty--now">${t("empty.now")}</div>`;
   $("queue").innerHTML = state.queue.length
-    ? state.queue.map((i, idx) => card(i, {
-        index: idx + 1,
-        next: idx === 0,
-        controls: "queue",
-      })).join("")
+    ? `<div class="setlist">${state.queue.map((i, idx) => row(i, { index: idx + 1, controls: "queue" })).join("")}</div>`
     : `<div class="empty">${t("admin.empty.queue")}</div>`;
   // Oldest first with sequence numbers, matching the request page; 1 is
-  // the first song ever played. History cards offer one-tap re-request.
+  // the first song ever played. History rows offer one-tap re-request.
   $("history").innerHTML = state.history.length
-    ? [...state.history].reverse().map((h, idx) => card(h, { index: idx + 1, controls: "history" })).join("")
+    ? state.history.slice().reverse().map((h, idx) => row(h, { index: idx + 1, controls: "history" })).join("")
     : `<div class="empty">${t("empty.history")}</div>`;
   // Server state wins: reconcile the two switches from what arrived.
   for (const [id, key] of switchIds) {
@@ -241,9 +232,11 @@ function render(state) {
   enhanceMarquee();
 }
 
-/* Click handling for the queue action buttons. */
+/* Click handling for the queue action buttons. Resolving the target with
+ * closest() keeps the icon inside a button working as the button. */
 document.addEventListener("click", async (e) => {
-  const el = e.target;
+  const el = e.target.closest?.("[data-del],[data-move],[data-rerequest],#skip");
+  if (!el) return;
   try {
     if (el.dataset.del) {
       await mutate("/api/delete", { id: el.dataset.del });
@@ -253,8 +246,6 @@ document.addEventListener("click", async (e) => {
       await mutate("/api/rerequest", { id: el.dataset.rerequest, by: "管理员" });
     } else if (el.id === "skip") {
       await mutate("/api/skip");
-    } else {
-      return;
     }
     await refresh();
   } catch (err) {
@@ -366,7 +357,7 @@ document.addEventListener("keydown", (e) => {
     e.preventDefault();
     mutate("/api/reorder", { id: grip.closest(".qcard").dataset.qid, direction: e.key === "ArrowUp" ? "up" : "down" })
       .then(() => refresh())
-      .catch((err) => showToast("fail", "admin.alert_action_failed", { e: err.message }));
+      .catch((err) => showToast("fail", t("admin.alert_action_failed", { e: err.message })));
   } else if (e.key === "Escape" && drag) {
     endDrag(false);
   }

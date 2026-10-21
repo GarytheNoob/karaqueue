@@ -52,8 +52,8 @@ The extension uses Manifest V3 and drives the big-screen browser.
 The admin console runs on a separate port, opens on a phone, and targets the host. It carries the same language switcher, top layout, and LAN-access drawer as the request page, and its QR points guests at the request page.
 
 - skip the current track immediately
-- delete a queued track (✕ on the card)
-- drag a queued track by its grip handle to any slot, or jump to the top with the "⤒" button; a keyboard works too, ArrowUp/ArrowDown on the focused grip
+- delete a queued track (× on the row)
+- drag a queued track by its grip handle to any slot, or send it to the front with the "提前" (to front) button; a keyboard works too, ArrowUp/ArrowDown on the focused grip
 - re-request any entry in the played history, which carries sequence numbers
 
 Two room rules are toggles rendered as switches:
@@ -68,9 +68,10 @@ Two room rules are toggles rendered as switches:
 - `server/static/admin.html`: the admin console
 - `server/static/i18n/`: UI strings, one JSON per language plus the shared i18n core
 - `server/static/ui/ui.js`: shared browser helpers for both pages (platform icons, title marquee, toasts, LAN drawer)
+- `server/static/ui/theme.css`: the shared visual system for both pages (tokens, setlist, panels, responsive rules)
 - `extension/`: the Chrome extension
 
-Both pages are single-file and framework-free; the shared parts live in `ui/ui.js` and the i18n core, both plain scripts.
+Both pages are single-file and framework-free; the shared parts live in `ui/theme.css`, `ui/ui.js` and the i18n core, all plain files.
 
 ## Languages
 

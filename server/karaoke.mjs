@@ -8,6 +8,7 @@
  *   GET  /api/hostinfo    -> LAN addresses + best-effort Wi-Fi SSID
  *                            (drives the request page's sidebar QR)
  *   GET  /ui/ui.js        -> shared browser UI helpers (fixed name)
+ *   GET  /ui/theme.css    -> shared theme for both pages (fixed name)
  *   POST /api/submit      -> body { input, by, uid }; resolves input, enqueues it
  *                              (uid binds the request to the browser cookie
  *                              so fair-mode lockout survives nickname edits)
@@ -23,7 +24,8 @@
  *   GET  /                -> admin console (static/admin.html)
  *   GET  /i18n/<lang>.json -> UI strings for the page language switcher
  *                             (files under static/i18n/; public port too,
- *                             /i18n/i18n.js is the shared core script)
+ *                             /i18n/i18n.js is the shared core script;
+ *                             /ui/theme.css, /ui/ui.js are shared)
  *   GET  /api/state       -> full state snapshot
  *   GET  /api/events      -> SSE stream
  *   GET  /api/config      -> { config }
@@ -1242,13 +1244,17 @@ async function route(req, res, isAdmin = false) {
   // Vendored browser libs and the shared UI script (no npm). Fixed
   // file names only - the route never interpolates the pathname, so
   // there is no traversal surface.
-  if (req.method === "GET" && (pathname === "/vendor/qrcode.js" || pathname === "/ui/ui.js")) {
-    const rel = pathname === "/ui/ui.js" ? path.join("ui", "ui.js") : path.join("vendor", "qrcode.js");
+  if (req.method === "GET" && (pathname === "/vendor/qrcode.js" || pathname === "/ui/ui.js" || pathname === "/ui/theme.css")) {
+    const [rel, type] = pathname === "/vendor/qrcode.js"
+      ? ["vendor/qrcode.js", "text/javascript; charset=utf-8"]
+      : pathname === "/ui/theme.css"
+        ? [path.join("ui", "theme.css"), "text/css; charset=utf-8"]
+        : [path.join("ui", "ui.js"), "text/javascript; charset=utf-8"];
     try {
-      res.writeHead(200, { "Content-Type": "text/javascript; charset=utf-8" });
+      res.writeHead(200, { "Content-Type": type });
       res.end(fs.readFileSync(path.join(STATIC_DIR, rel)));
     } catch {
-      sendJson(res, 404, { ok: false, message: `no such static script: ${pathname}` });
+      sendJson(res, 404, { ok: false, message: `no such static file: ${pathname}` });
     }
     return;
   }
@@ -1345,15 +1351,19 @@ async function routeAdmin(req, res, url, pathname) {
     return sendJson(res, 200, { ok: true, host: { ...lanHostInfo(), primary: primaryLanIp(req) } });
   }
 
-  // Shared UI script and the QR vendor lib, same fixed-name contract
-  // as the public port's /ui/ and /vendor/ routes.
-  if (req.method === "GET" && (pathname === "/ui/ui.js" || pathname === "/vendor/qrcode.js")) {
-    const rel = pathname === "/ui/ui.js" ? path.join("ui", "ui.js") : path.join("vendor", "qrcode.js");
+  // Shared theme, UI script and the QR vendor lib, same fixed-name
+  // contract as the public port's /ui/ and /vendor/ routes.
+  if (req.method === "GET" && (pathname === "/ui/ui.js" || pathname === "/vendor/qrcode.js" || pathname === "/ui/theme.css")) {
+    const [rel, type] = pathname === "/vendor/qrcode.js"
+      ? ["vendor/qrcode.js", "text/javascript; charset=utf-8"]
+      : pathname === "/ui/theme.css"
+        ? [path.join("ui", "theme.css"), "text/css; charset=utf-8"]
+        : [path.join("ui", "ui.js"), "text/javascript; charset=utf-8"];
     try {
-      res.writeHead(200, { "Content-Type": "text/javascript; charset=utf-8" });
+      res.writeHead(200, { "Content-Type": type });
       res.end(fs.readFileSync(path.join(STATIC_DIR, rel)));
     } catch {
-      sendJson(res, 404, { ok: false, message: `no such static script: ${pathname}` });
+      sendJson(res, 404, { ok: false, message: `no such static file: ${pathname}` });
     }
     return;
   }
