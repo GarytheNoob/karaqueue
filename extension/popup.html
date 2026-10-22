@@ -2,37 +2,58 @@
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8" />
-<style>
-  /* Mirrors the card design of the song request page (server/static/index.html). */
-  body { font-family: system-ui, sans-serif; width: 300px; margin: 0; padding: 12px; background: #101014; color: #e8e8ee; }
-  h1 { font-size: 14px; margin: 0 0 10px; }
-  h2 { font-size: 11px; margin: 14px 0 6px; color: #9aa; letter-spacing: .05em; }
-  input, button { width: 100%; box-sizing: border-box; border-radius: 10px; padding: 8px 10px; font-size: 13px; }
-  input { background: #1c1c22; border: 1px solid #33333d; color: inherit; margin-bottom: 8px; }
-  button { background: #2f6fed; border: 0; color: #fff; font-weight: 600; cursor: pointer; margin-bottom: 6px; }
-  button.ghost { background: transparent; border: 1px solid #555; color: #bbb; font-weight: 400; }
-  #status { font-size: 12px; color: #8f8; min-height: 15px; }
-  .card { background: #17171d; border: 1px solid #26262e; border-radius: 12px; padding: 10px 12px; }
-  .card.now { border-color: #2f6fed; }
-  .card.upnext { border-color: #e0a33f; }
-  .card .title { font-size: 13px; line-height: 1.4; }
-  .card .meta { font-size: 11px; color: #888; margin-top: 4px; display: flex; justify-content: space-between; }
-  .tag { font-size: 10px; background: #2f6fed; color: #fff; border-radius: 4px; padding: 1px 6px; margin-right: 6px; vertical-align: 2px; }
-  .tag.upnext { background: #e0a33f; color: #2b1d00; }
-  .empty { color: #666; font-size: 12px; padding: 4px 2px; }
-</style>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link rel="stylesheet" href="popup.css" />
+<title>KaraQueue</title>
 </head>
 <body>
-  <h1>KaraQueue</h1>
-  <input id="serverUrl" placeholder="队列服务地址，如 http://192.168.1.5:7777" />
-  <button id="save">保存服务地址</button>
-  <button id="open" class="ghost">打开 / 播放当前曲目</button>
-  <button id="skip" class="ghost">跳过当前，直接播下一首</button>
-  <div id="status"></div>
-  <h2>正在播放</h2>
-  <div id="now"></div>
-  <h2>下一首</h2>
-  <div id="next"></div>
+  <!-- Same 48px bar as the pages: mark, name, one rule. -->
+  <header class="bar">
+    <svg class="mark" viewBox="0 0 20 20" fill="none" stroke="currentColor"
+         stroke-width="1.6" stroke-linecap="round" aria-hidden="true" focusable="false">
+      <rect x="7.1" y="2.2" width="5.8" height="9.6" rx="2.9" />
+      <path d="M4.4 9.2a5.6 5.6 0 0 0 11.2 0" />
+      <path d="M10 14.8v3.1M7.4 17.9h5.2" />
+    </svg>
+    <h1>KaraQueue</h1>
+  </header>
+
+  <main class="pop">
+    <!-- Connection is a setting, not the popup's main job: quiet control. -->
+    <section aria-labelledby="serverLbl">
+      <label class="lbl" id="serverLbl" for="serverUrl">队列服务</label>
+      <div class="field-row">
+        <input id="serverUrl" type="url" inputmode="url" spellcheck="false"
+               autocomplete="url" placeholder="http://192.168.1.5:7777" />
+        <button id="save" class="btn btn--quiet save" type="button">保存</button>
+      </div>
+      <p class="hint">需与电脑在同一局域网，地址要带 :7777 端口</p>
+    </section>
+
+    <!-- The one primary action: start / return to the live track. -->
+    <div class="actions">
+      <button id="open" class="btn btn--block" type="button">打开 / 播放当前曲目</button>
+      <button id="skip" class="btn btn--quiet btn--block" type="button">跳过当前，直接播下一首</button>
+    </div>
+
+    <p id="status" class="status" role="status" aria-live="polite"></p>
+
+    <section class="sec" aria-labelledby="nowLbl">
+      <div class="sec-head">
+        <span class="eq" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></span>
+        <h2 id="nowLbl">正在播放</h2>
+      </div>
+      <div id="now" class="panel"></div>
+    </section>
+
+    <section class="sec next-sec" id="nextSec" aria-labelledby="nextLbl" hidden>
+      <div class="sec-head">
+        <h2 id="nextLbl">下一首</h2>
+      </div>
+      <div id="next"></div>
+    </section>
+  </main>
+
   <script src="popup.js"></script>
 </body>
 </html>

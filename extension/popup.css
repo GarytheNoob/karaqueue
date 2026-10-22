@@ -1,0 +1,370 @@
+/**
+ * KaraQueue extension popup — the same face as the server pages:
+ * true black ground, elevation by lightness, one lime live marker.
+ * Kept local: an extension page cannot reach the server's theme.css.
+ */
+
+/* --- Tokens --------------------------------------------------------- */
+:root {
+  color-scheme: dark;
+
+  --ground: #000000;
+  --surface: #111112;
+  --raised: #1c1c1e;
+  --raised-2: #262629;
+  --rule: #1b1b1d;
+
+  --text: #f4f4f5;
+  --muted: #b4b4b4;
+  --faint: #949494;
+
+  --accent: #c6f24e;
+  --negative: #e5484d;
+
+  --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC",
+    "Hiragino Sans GB", "Microsoft YaHei", "Segoe UI", Roboto, system-ui,
+    sans-serif;
+}
+
+/* --- Base ----------------------------------------------------------- */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  background: var(--ground);
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  width: 320px;
+  margin: 0;
+  background: var(--ground);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 14px;
+  line-height: 1.45;
+  -webkit-font-smoothing: antialiased;
+}
+
+h1,
+h2,
+p {
+  margin: 0;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+}
+
+:focus-visible {
+  outline: 2px solid #ffffff;
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+::selection {
+  background: var(--accent);
+  color: #000;
+}
+
+/* --- Bar ------------------------------------------------------------ */
+.bar {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  height: 48px;
+  padding: 0 16px;
+  border-bottom: 1px solid var(--rule);
+}
+
+.bar .mark {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  color: var(--text);
+}
+
+.bar h1 {
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+/* --- Layout --------------------------------------------------------- */
+.pop {
+  padding: 14px 16px 16px;
+}
+
+/* --- Server field --------------------------------------------------- */
+.lbl {
+  display: block;
+  margin-bottom: 6px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.field-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.field-row input {
+  flex: 1;
+  min-width: 0;
+  height: 38px;
+  padding: 0 11px;
+  background: var(--raised);
+  border: 1px solid #2c2c30;
+  border-radius: 10px;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 13px;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.field-row input::placeholder {
+  color: #8b8b90;
+}
+
+.field-row input:hover {
+  border-color: #3a3a3f;
+}
+
+.field-row input:focus {
+  outline: none;
+  border-color: #6a6a70;
+  background: #202023;
+}
+
+.hint {
+  margin-top: 6px;
+  color: var(--faint);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+/* --- Buttons -------------------------------------------------------- */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  height: 44px;
+  padding: 0 16px;
+  background: var(--text);
+  border: 0;
+  border-radius: 999px;
+  color: #0a0a0a;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s ease, transform 0.08s ease;
+}
+
+.btn:hover {
+  background: #ffffff;
+}
+
+.btn:active {
+  transform: translateY(1px);
+}
+
+.btn--block {
+  width: 100%;
+}
+
+.btn--quiet {
+  height: 36px;
+  padding: 0 14px;
+  background: var(--raised);
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.btn--quiet:hover {
+  background: var(--raised-2);
+}
+
+/* The save control sits beside the field, so it matches the field height. */
+.save {
+  flex: none;
+  height: 38px;
+  padding: 0 13px;
+}
+
+.actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+/* --- Action feedback ------------------------------------------------ */
+.status {
+  min-height: 17px;
+  margin-top: 8px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.status::before {
+  content: "";
+  display: inline-block;
+  width: 5px;
+  height: 5px;
+  margin-right: 7px;
+  vertical-align: 1px;
+  border-radius: 50%;
+  background: transparent;
+}
+
+.status.ok::before {
+  background: var(--accent);
+}
+
+.status.fail::before {
+  background: var(--negative);
+}
+
+.status.busy::before {
+  background: var(--faint);
+}
+
+/* --- Sections ------------------------------------------------------- */
+.sec {
+  margin-top: 18px;
+}
+
+.sec-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.sec-head h2 {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+/* The live-track marker: five bars, the only colour in the popup. */
+.eq {
+  display: inline-flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 11px;
+  flex: none;
+}
+
+.eq i {
+  display: block;
+  width: 2px;
+  border-radius: 1px;
+  background: var(--accent);
+}
+
+.eq i:nth-child(1) { height: 4px; }
+.eq i:nth-child(2) { height: 8px; }
+.eq i:nth-child(3) { height: 6px; }
+.eq i:nth-child(4) { height: 11px; }
+.eq i:nth-child(5) { height: 5px; }
+
+.panel {
+  padding: 14px;
+  background: var(--surface);
+  border-radius: 16px;
+}
+
+.now-title {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.now-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+  color: var(--faint);
+  font-size: 12px;
+}
+
+.now-meta .by {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.now-meta .dur {
+  margin-left: auto;
+  flex: none;
+  padding-left: 4px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* --- Next up -------------------------------------------------------- */
+.next-sec {
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid var(--rule);
+}
+
+.next-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.next-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.next-title {
+  overflow: hidden;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.4;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.next-meta {
+  margin-top: 3px;
+  overflow: hidden;
+  color: var(--faint);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.next-dur {
+  flex: none;
+  color: var(--faint);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.empty {
+  color: var(--faint);
+  font-size: 12px;
+  line-height: 1.55;
+}

@@ -89,12 +89,20 @@
         if (document.getElementById("karaqueue-resume")) return;
         const btn = document.createElement("button");
         btn.id = "karaqueue-resume";
-        btn.textContent = "▶ 继续播放";
+        btn.innerHTML = `<svg viewBox="0 0 20 20" width="14" height="14" fill="currentColor"
+          aria-hidden="true"><path d="M6.4 4.1v11.8L16.2 10z" /></svg>继续播放`;
         Object.assign(btn.style, {
           position: "fixed", right: "16px", bottom: "16px", zIndex: 999999,
-          padding: "10px 18px", borderRadius: "10px", border: "0",
-          background: "#2f6fed", color: "#fff", fontSize: "15px", cursor: "pointer",
+          display: "inline-flex", alignItems: "center", gap: "8px",
+          height: "44px", padding: "0 18px",
+          background: "#1c1c1e", color: "#f4f4f5",
+          border: "0", borderRadius: "999px",
+          boxShadow: "0 10px 26px rgba(0, 0, 0, 0.45)",
+          fontFamily: '-apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Segoe UI", sans-serif',
+          fontSize: "14px", fontWeight: "600", lineHeight: "1", cursor: "pointer",
         });
+        btn.addEventListener("mouseenter", () => (btn.style.background = "#262629"));
+        btn.addEventListener("mouseleave", () => (btn.style.background = "#1c1c1e"));
         btn.addEventListener("click", () => {
           video.play();
           btn.remove();

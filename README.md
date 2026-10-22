@@ -45,7 +45,7 @@ The extension uses Manifest V3 and drives the big-screen browser.
 
 - Auto-advance when a video ends, by watching the `ended` event on `<video>` and rebinding after single-page navigations. It drives both bilibili and YouTube watch pages; switching between platforms reuses the same tab.
 - Show a "resume playback" overlay in the bottom-right corner when the browser blocks autoplay; one tap covers the whole session.
-- Provide a popup that configures the server address, opens the current track, and skips the current track immediately. Its NOW/NEXT cards match the request page. A bad address produces a plain-language error instead of a raw JSON parse failure.
+- Provide a popup that configures the server address, opens the current track, and skips the current track immediately. Its now/next display follows the request page's setlist language. A bad address produces a plain-language error instead of a raw JSON parse failure.
 
 ## Admin Console
 
