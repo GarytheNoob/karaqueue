@@ -39,6 +39,28 @@ function setStatus(text, tone = "") {
   }
 }
 
+/* Host access: Chromium grants manifest host_permissions at install, so a
+   request() for an already-granted origin answers true with no prompt.
+   Firefox keeps host access revocable (and gates content script injection
+   on the same grants), so on Firefox we also cover the player sites; the
+   door hanger only appears when a grant is actually missing. */
+const SERVER_ORIGIN = "http://*/*";
+const SITE_ORIGINS = ["*://*.bilibili.com/*", "*://*.youtube.com/*", "*://youtu.be/*"];
+const isFirefox = chrome.runtime.getURL("").startsWith("moz-extension:");
+
+/** Ask for every origin this popup needs. Must be awaited within the click
+ * (transient user activation). Saves still happen on a refusal; the status
+ * just says access is missing. */
+async function ensureHostAccess() {
+  try {
+    return await chrome.permissions.request({
+      origins: [SERVER_ORIGIN, ...(isFirefox ? SITE_ORIGINS : [])],
+    });
+  } catch {
+    return false;
+  }
+}
+
 chrome.storage.sync.get({ serverUrl: DEFAULT_SERVER }).then(({ serverUrl }) => {
   document.getElementById("serverUrl").value = serverUrl;
 });
@@ -49,8 +71,13 @@ document.getElementById("save").addEventListener("click", async () => {
     setStatus("地址需要以 http:// 开头", "fail");
     return;
   }
+  const granted = await ensureHostAccess();
   await chrome.storage.sync.set({ serverUrl: url });
-  setStatus("已保存", "ok");
+  if (granted) {
+    setStatus("已保存", "ok");
+  } else {
+    setStatus("已保存，但未获得站点访问权限；再点一次保存重新授权，或在 about:addons 的插件权限里手动开启", "fail");
+  }
   await refresh();
 });
 

@@ -10,12 +10,15 @@
  *    the server's current item, advance the queue, navigate the tab and
  *    ack the sender (which retries until it gets the ack).
  *  - OPEN_CURRENT (from the popup) opens or points a tab at the current item.
+ *
+ * Runs as a service worker on Chromium and as an MV3 event page on Firefox.
+ * Event pages (like service workers) may be torn down between events, so
+ * all debounce/cooldown state lives in `storage.session`, not in globals.
  */
 const DEFAULT_SERVER = "http://127.0.0.1:7777";
 
 /** Ignore duplicate end events arriving within this window. */
 const ADVANCE_DEBOUNCE_MS = 4000;
-let lastAdvanceAt = 0;
 
 /* ------------------------------------------------------------------ */
 /* Server API helpers                                                  */
@@ -97,7 +100,6 @@ async function rememberPlayerTab(tabId) {
 /** Minimum spacing between tab creations, so no pathology (a dead
  * remembered ID plus a racing query) can ever spam the tab bar. */
 const TAB_CREATE_COOLDOWN_MS = 30000;
-let lastTabCreateAt = 0;
 
 async function findPlayerTab() {
   const watch = await chrome.tabs.query({ url: WATCH_URLS });
@@ -133,11 +135,13 @@ async function reconcile(preferredTabId) {
 
   if (!tab) {
     // Nothing usable anywhere: one fresh background tab, remembered.
-    if (Date.now() - lastTabCreateAt < TAB_CREATE_COOLDOWN_MS) {
-      console.log(`[karaqueue] player tab missing, but one was created ${Math.round((Date.now() - lastTabCreateAt) / 1000)}s ago; not spawning again yet`);
+    const now = Date.now();
+    const { lastTabCreateAt = 0 } = await chrome.storage.session.get("lastTabCreateAt");
+    if (now - lastTabCreateAt < TAB_CREATE_COOLDOWN_MS) {
+      console.log(`[karaqueue] player tab missing, but one was created ${Math.round((now - lastTabCreateAt) / 1000)}s ago; not spawning again yet`);
       return null;
     }
-    lastTabCreateAt = Date.now();
+    await chrome.storage.session.set({ lastTabCreateAt: now });
     const created = await chrome.tabs.create({ url: current.web_url, active: false });
     await rememberPlayerTab(created.id);
     console.log(`[karaqueue] no player tab on either platform; created background tab ${created.id} for ${current.id}`);
@@ -190,11 +194,12 @@ async function handleEnded(msg, tabId) {
   }
 
   const now = Date.now();
+  const { lastAdvanceAt = 0 } = await chrome.storage.session.get("lastAdvanceAt");
   if (now - lastAdvanceAt < ADVANCE_DEBOUNCE_MS) {
     console.log(`[karaqueue] advance debounced, treating ${reported ?? "(unknown track)"} as handled`);
     return { ok: true, current: current?.id ?? null };
   }
-  lastAdvanceAt = now;
+  await chrome.storage.session.set({ lastAdvanceAt: now });
 
   const result = await advance("played");
   const next = result.current;
@@ -212,6 +217,9 @@ async function handleEnded(msg, tabId) {
 }
 
 // Periodic reconciliation also catches skips issued from the phone UI.
+// 15s on Chromium; Firefox clamps periods under 1 minute up to 1 minute.
+// Either way this is only the fallback: message-driven reconcile (open /
+// ended) reacts immediately.
 chrome.alarms.create("sync", { periodInMinutes: 0.25 });
 chrome.alarms.onAlarm.addListener((alarm) => {
   if (alarm.name === "sync") reconcile(null).catch(console.error);

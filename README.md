@@ -39,9 +39,9 @@ A collapsible sidebar (the `☰` button in the header) shows how a phone joins: 
 
 The mobile page has no skip button. Skipping is the host's job.
 
-## Chrome Extension
+## Browser Extension
 
-The extension uses Manifest V3 and drives the big-screen browser.
+The extension uses Manifest V3 and drives the big-screen browser, on Chromium and Firefox alike: Chromium runs the background as a service worker, Firefox as an event page. Firefox shows a one-click site-access prompt at install; if access is ever missing (revoked, or blocked by policy), saving the address in the popup asks for it again.
 
 - Auto-advance when a video ends, by watching the `ended` event on `<video>` and rebinding after single-page navigations. It drives both bilibili and YouTube watch pages; switching between platforms reuses the same tab.
 - Show a "resume playback" overlay in the bottom-right corner when the browser blocks autoplay; one tap covers the whole session.

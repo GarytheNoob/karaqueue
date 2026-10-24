@@ -40,9 +40,9 @@ YouTube 元数据走官方免 key 的 oEmbed 接口：标题、作者、缩略�
 
 手机端没有跳过按钮。切歌是房主的职责。
 
-## Chrome 插件
+## 浏览器插件
 
-插件用 MV3，负责驱动大屏播放。
+插件用 MV3，负责驱动大屏播放，Chromium 和 Firefox 都能跑：Chromium 用 service worker 跑后台，Firefox 用 event page。Firefox 安装时会一次性询问站点权限；权限被拒或被撤销时，在弹窗里重新保存地址会再次发起授权。
 
 - 视频播完自动切下一首。它监听 `<video>` 的 `ended` 事件，SPA 路由切换后自动重绑。B 站和 YouTube 的播放页都能驱动；两家之间切换复用同一个标签页。
 - autoplay 被浏览器拦截时，右下角出现“继续播放”悬浮按钮。点一次即可，整场只要这一次手势。
