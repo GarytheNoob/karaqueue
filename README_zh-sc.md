@@ -1,141 +1,171 @@
 # KaraQueue
 
-> 英文文档：[README.md](README.md)
+> [English](README.md) · [简体中文](README_zh-sc.md)
 
-局域网点歌机原型。大家用手机提交 B 站或 YouTube 视频，队列服务维护顺序，Chrome 插件驱动大屏浏览器自动连播。服务端只用 Node 内置模块，没有 npm 依赖。
+[![Release](https://img.shields.io/github/v/release/GarytheNoob/karaqueue)](https://github.com/GarytheNoob/karaqueue/releases/latest)
+[![Downloads](https://img.shields.io/github/downloads/GarytheNoob/karaqueue/total)](https://github.com/GarytheNoob/karaqueue/releases/latest)
+[![License](https://img.shields.io/github/license/GarytheNoob/karaqueue)](LICENSE)
+![Node ≥ 18](https://img.shields.io/badge/Node%20%E2%89%A5%2018-339933?logo=node.js&logoColor=white)
+![Chromium · Firefox](https://img.shields.io/badge/Chrome%20%C2%B7%20Edge%20%C2%B7%20Firefox-000000?logo=googlechrome&logoColor=white)
 
-## 点歌
+<p align="center">
+  <img src="docs/images/request.png" alt="KaraQueue 点歌页" width="100%">
+</p>
 
-支持的输入：
+局域网点歌机。大家用手机提交 B 站或 YouTube 视频，队列服务维护顺序，浏览器插件驱动大屏自动连播下一首点歌。服务端只用 Node 内置模块，没有 npm 依赖。
 
-- B 站：BV 号、av 号、完整网页链接、`?p=N` 分 P 链接、`b23.tv` 短链
-- YouTube：`watch?v=`、`youtu.be` 短链、shorts 链接
-- 手机 App 的分享文本，如 `【标题】 https://b23.tv/xxx`，链接自动提取（两家的链接都认）
+## 介绍
 
-B 站多 P 投稿按单 P 算一首歌，分 P 号进曲目 ID。两家的歌单都不展开；带 `list=` 参数的 YouTube 链接只会入队单个视频。
+<div align="center">
 
-B 站会拦截元数据接口，常见的是返回 HTTP 412 和一段网页。被拦时点歌不会失败。服务端先查本地缓存，命中就不联网，条目 24 小时内有效。API 还是被拦时（例如在香港这类境外出口，412 是按出口 IP 稳定出现的），服务端改抓视频网页，从 `window.__INITIAL_STATE__` 解析同样的元数据；已删除或地区受限的视频页没有这些数据，会像其他失败一样降级。完全拿不到元数据就把曲目按纯链接入队，照样能播，标题显示“元数据未获取”。只有视频 ID 本身无效或不存在（B 站 code -400/-404）才拒绝提交。首次请求前会取 `buvid3`、`buvid4` Cookie，降低 412 出现的概率。
+| ![](docs/images/admin.png) | ![](docs/images/popup.png) |
+|:---:|:---:|
+| 管理后台 | 插件弹窗 |
 
-YouTube 元数据走官方免 key 的 oEmbed 接口：标题、作者、缩略图，没有时长（时长那格就空着，整个流程不依赖它）。只有视频不存在（HTTP 404）才拒绝提交；私密或禁止外链的视频降级为纯链接入队，照样能播。两个来源共用同一条缓存和降级路径；混排时 YouTube 条目带平台图标。
+</div>
 
-## 队列与规则
+**它做什么，一目了然：**
 
-队列先来后到，每条显示点歌人。房间空闲时提交的歌会立刻开播，并提升为“正在播放”，所有客户端跟着切。服务重启后恢复没播完的会话。
+- **手机优先的点歌。** 表单认得 BV 号、av 号、完整网页链接、`?p=N` 分 P 链接和 `b23.tv` 短链；YouTube 的 `watch?v=`、`youtu.be`、shorts 链接；还有两家手机 App 的分享原文。B 站多 P 按单 P 算一首。歌单一律不展开；带 `list=` 的 YouTube 链接只入队单个视频。
+- **即刻开播。** 房间空闲时提交的歌立刻开播，所有客户端跟着切；队列里的歌唱完自动切下一首——切歌由插件完成，整晚只有第一次手势。
+- **房主控制。** 跳过、移出、调序（拖拽 / 置顶按钮 / 方向键）、重播已播歌曲——在管理后台或插件弹窗里做。
+- **两条房间规则。** 允许队列重复点同一首；公平轮唱，每人限一首。
+- **撤回与历史。** 客人随时能撤回自己点的歌；播过的进已播历史，一键回队。
+- **实时，为手机优化。** 所有变更走 SSE，实测约 20 ms。手机浏览器会冻结后台标签、掐断 SSE，所以每个页面回前台即对账，可见期间每 5 秒轮询兜底。
+- **完全离线的局域网栈。** 服务端、两个页面和插件都是原生 JS，零依赖；不取任何 CDN 资源或字体，全部东西都在这个仓库里。
+- **三语界面**（英 / 简 / 繁），页头切换；服务端生成的提示跟随页面所选语言。
+- **Chromium 与 Firefox。** 一份 MV3 插件两端通跑：Chromium 用 service worker 跑后台，Firefox 用 event page。
 
-判重看归一化 ID，也就是 `bvid` 加分 P 号。重复提交正在播放或已在队列里的歌会被拒绝，报错是中文人话。播过的歌可以再点。队列和已播历史都不设容量上限。
+关于元数据：B 站高负载时会限流元数据接口（常见 HTTP 412），但点歌不会失败——服务端有 24 小时缓存，接着会改抓视频网页解析 `window.__INITIAL_STATE__`；只有视频 ID 本身无效（code -400/-404）才拒绝提交。YouTube 元数据走官方免 key 的 oEmbed 接口（标题、作者、缩略图；无时长）。两路都拿不到元数据时（已删除、地区受限，或网络到不了），曲目按纯链接入队，照样能播，标注"元数据未获取"。
 
-每个人都能撤回自己点的歌。本人点的歌在“正在播放”“队列”“已播历史”里都带绿色“我点的”角标，队列里的歌还带“✕ 撤回”按钮。归属由服务端按浏览器 uid 校验，跟公平轮唱开关无关。撤回队列里的歌，会同时释放这个客人的公平名额。
+## 构建与安装
 
-所有变更都通过 SSE 即时广播，实测约 20 ms。点歌、跳过、删除、调序、切换规则都算。手机后台标签会被冻结，SSE 连接也会断。页面回到前台会立刻对账，可见期间每 5 秒轮询一次兜底。
+**要求：Node ≥ 18**（用内置 fetch）。抓 YouTube 元数据可能还需要代理，见[错误排查](#错误排查)。
 
-## 点歌页
-
-点歌页在手机上打开，包含提交表单、正在播放和队列。“已播历史”放在二级页面，旧的在上、带序号，序号 1 是全场第一首。卡片用蓝色标 NOW，用琥珀色标 NEXT，每张卡片带平台图标（内联 SVG data URI，不访问任何 CDN）。
-
-长标题不折行：悬停到标题上才向左滚动一遍，滚到末尾停住不再循环；标题放得下就不滚。触屏则点一下标题行触发。滚动完全由悬停/点按触发，因此不受系统“减弱动态效果”设置影响。
-
-提交和撤回的结果用屏幕底部的短 toast 提示，不再用常驻提示行；失败会原样复述服务器的本地化句子，4.5 秒后自动消失（点击可提前关掉）。
-
-页头有个可折叠的侧边栏（`☰` 按钮），说明手机怎么加入：显示主机的 Wi-Fi 名称和局域网地址，带一个直达点歌页的二维码。二维码编码的是当前请求实际到达的那个地址，VPN、隧道接口不会把二维码带偏。新版 macOS 只在给服务端进程定位权限时提供 SSID；拿不到时该行显示“未能读取”，服务地址照常可用。
-
-手机端没有跳过按钮。切歌是房主的职责。
-
-## 浏览器插件
-
-插件用 MV3，负责驱动大屏播放，Chromium 和 Firefox 都能跑：Chromium 用 service worker 跑后台，Firefox 用 event page。Firefox 安装时会一次性询问站点权限；权限被拒或被撤销时，在弹窗里重新保存地址会再次发起授权。
-
-- 视频播完自动切下一首。它监听 `<video>` 的 `ended` 事件，SPA 路由切换后自动重绑。B 站和 YouTube 的播放页都能驱动；两家之间切换复用同一个标签页。
-- autoplay 被浏览器拦截时，右下角出现“继续播放”悬浮按钮。点一次即可，整场只要这一次手势。
-- 弹窗可以配置服务地址、打开当前曲目、跳过当前曲目。跳过立即生效。正在播放/下一首和点歌页同一套视觉语言。地址配错时给中文人话报错，不会抛裸的 JSON 解析错误。
-
-## 管理后台
-
-管理后台跑在独立端口，用手机打开，面向房主。它有和点歌页一样的语言切换、顶栏布局与局域网侧边栏，二维码指向点歌页。
-
-- 跳过当前曲目，立即生效
-- 移出队列里的歌（卡片角落的 ✕）
-- 按住把手拖到任意位置调序，另有“⤒ 提前”按钮一键置顶；聚焦把手后按 ↑ / ↓ 方向键也能调序
-- 已播历史带序号，每条有“再点一次”按钮，重新入队；房间空闲时立刻开播
-
-房间规则有两个开关（开关样式）：
-
-- 允许队列中重复点同一首歌。关闭时，正在播放或已在队列的重复提交会被拒绝；打开时，同一首歌可以在队列里叠多条。
-- 公平轮唱，每人限点一首。打开后，每个人同时最多一首歌在唱或在排。识别用浏览器 Cookie，改昵称、刷页面都不影响。被锁定期间，点歌页上这个客人的“加入队列”按钮置灰，昵称输入框锁定，直到自己的歌唱完。
-
-## 组成
-
-- `server/karaoke.mjs`：队列服务，只用 Node 内置模块
-- `server/static/index.html`：手机点歌页
-- `server/static/admin.html`：管理后台
-- `server/static/i18n/`：界面文案，每语言一个 JSON，附共享的 i18n 内核
-- `server/static/ui/ui.js`：两个页面共享的浏览器端部件（平台图标、标题滚动、toast、局域网抽屉）
-- `extension/`：Chrome 插件
-
-两个页面都是无框架单文件；共享部分在 `ui/ui.js` 和 i18n 内核里，都是纯脚本。
-
-## 语言
-
-两个页面顶部都是 `En | 简 | 繁` 段式语言切换——滑动的胶囊高亮，不是系统下拉框。选好存在浏览器里，刷新页面也不丢，默认中文。
-
-界面文案放在 `server/static/i18n/` 下，每个语言一个 JSON 文件。现有 `zh-CN.json`、`en.json` 和 `zh-Hant.json`，三份文件的键完全一致。想加新语言，复制 `zh-CN.json`，翻译值，再把语言代码加进 `static/i18n/i18n.js` 的 `I18N_LANGS` 列表，并在 `I18N_SWITCH_CAPTION` 加一个段名。
-
-服务端生成的提示（点歌被拒、降级警告等）跟随页面语言。页面把选好的语言放进 `X-Karaqueue-Lang` 请求头，服务端用同一份语言文件翻译。不带这个头的调用方，比如插件弹窗，看到的还是中文。
-
-缺元数据的曲目只存裸标题，加 `title_missing` 标记。各端展示时再拼上本地化的后缀，中文是「（元数据未获取）」。
-
-服务端接口速览，供调试用：
-
-- 公共端口读：`GET /`（页面）、`GET /api/state`、`GET /api/events`（SSE）
-- 公共端口写：`POST /api/submit` `{input, by, uid}`、`POST /api/withdraw` `{id, uid}`、`POST /api/advance`、`POST /api/skip`
-- 管理端口读：`GET /`（控制台）、`GET /api/state`、`GET /api/events`、`GET /api/config`
-- 管理端口写：`POST /api/config` `{allowQueuedDuplicates, oneSongPerGuest}`、`POST /api/skip`、`POST /api/delete` `{id}`、`POST /api/reorder` `{id, direction: up|down|top}` 或 `{id, index: 从0开始的落位}`、`POST /api/rerequest` `{id}`
-
-## 运行
-
-需要 **Node ≥ 18**，用到内置的 fetch。
+### 服务端
 
 ```sh
-node server/karaoke.mjs                      # 默认监听 0.0.0.0:7777
-PORT=8080 HOST=127.0.0.1 node server/karaoke.mjs
+git clone https://github.com/GarytheNoob/karaqueue.git
+cd karaqueue
+node server/karaoke.mjs            # 默认监听 0.0.0.0:7777，管理后台 0.0.0.0:7778
 ```
 
-局域网里的设备访问 `http://<本机局域网 IP>:7777`。macOS 上用 `ipconfig getifaddr en0` 查本机 IP。
+局域网设备访问 `http://<本机局域网 IP>:7777`（macOS 上 `ipconfig getifaddr en0` 可查）。环境变量：
 
-环境变量：
+| 变量 | 含义 |
+|---|---|
+| `PORT` / `HOST` | 点歌页端口（默认 7777）/ 绑定地址 |
+| `ADMIN_PORT` | 管理后台端口，默认 7778 |
+| `KARAQUEUE_VIEW_API` / `KARAQUEUE_SPI_API` | 覆盖 B 站接口地址（测试用）；`KARAQUEUE_OEMBED_API` 同理覆盖 YouTube |
+| `KARAQUEUE_PROXY` | 跨网请求强制走代理，写法 `host:port` 或 `http://host:port`。不设时读 `HTTPS_PROXY`，再退回 macOS 系统代理。只对公网目标生效；本机、局域网和 B 站一律直连 |
 
-- `PORT`：服务端口，默认 7777
-- `HOST`：绑定地址
-- `ADMIN_PORT`：管理后台端口，默认 7778
-- `KARAQUEUE_VIEW_API`、`KARAQUEUE_SPI_API`：覆盖 B 站接口地址，测试用；`KARAQUEUE_OEMBED_API` 同理覆盖 YouTube 接口
-- `KARAQUEUE_PROXY`：跨网请求强制走这个代理，写法 `host:port` 或 `http://host:port`。不设时先读 `HTTPS_PROXY` 环境变量，macOS 再退回系统代理（`scutil --proxy` 自动发现）。只有公网地址走代理；本机和局域网目标一律直连，B 站从不走代理。
+### 浏览器插件
 
-## 安装插件
+**Chromium（Chrome/Edge）：**
 
-1. Chrome 打开 `chrome://extensions`，右上角打开“开发者模式”。
-2. 点“加载已解压的扩展程序”，选择本仓库的 `extension/` 目录。
-3. 点工具栏的 KaraQueue 图标，确认服务地址。默认 `http://127.0.0.1:7777`；服务跑在别的机器上就改成对应 IP 再保存。
+1. 从[最新 Release](https://github.com/GarytheNoob/karaqueue/releases/latest) 下载插件 zip（或直接用本仓库的 `extension/` 目录）并解压。
+2. 打开 `chrome://extensions`，开启开发者模式，点**加载已解压的扩展程序**，选解压出的目录。
+3. 点工具栏 KaraQueue 图标确认服务地址。默认 `http://127.0.0.1:7777`；服务跑在别的机器上就改成那台机的局域网地址再保存。
 
-## 使用流程
+**Firefox：**
+
+1. 拿到同一个 zip，三选一：
+   - `about:debugging` → 此 Firefox → **临时载入附加组件**，直接选 zip（临时安装，重启 Firefox 后消失）；
+   - 用 `npx web-ext run --source-dir extension/` 做开发，源码改动自动重载；
+   - 想常驻：换用 Firefox Nightly / Developer Edition，在 `about:config` 把 `xpinstall.signatures.required` 设为 `false`，再用附加组件管理器的"从文件安装附加组件"装 zip。
+2. Firefox 安装时授予站点访问；权限缺失时，在弹窗里重新保存地址会再次发起授权，或在附加组件管理器的"权限"页手动开启。
+
+客人什么都不用装：手机直接开 `http://<本机局域网 IP>:7777`。
+
+## 使用方法
+
+### 快速开始
 
 1. 大屏电脑启动队列服务。
-2. 大屏 Chrome 手动打开第一个视频，或者用插件弹窗的“打开当前曲目”。如果浏览器拦截自动播放，点一次右下角的“继续播放”。之后整晚不用再交互。
-3. 大家用手机点歌。空闲时点歌会自动开播，一首播完插件自动切下一首。
-4. 房主在插件弹窗或管理后台随时跳过、删除、调序、置顶，或一键重播历史歌曲。
-5. 客人想重听某首歌，就在点歌页的“已播历史”里找到它，再提交一次。
+2. 大屏打开第一个视频——手动开，或用插件弹窗的"打开 / 播放当前曲目"。浏览器拦截自动播放时，点一次右下角的"继续播放"，这是整晚唯一一次交互。
+3. 客人扫页面侧栏里的二维码进点歌页，开始点歌。
+4. 房主通过插件弹窗或管理后台管理房间。
+5. 一首播完，插件自动切下一首。
 
-## 排障
+### 客人（点歌页）
 
-- 弹窗报 `TypeError: Failed to fetch`：配置的地址没有应答。先确认服务在大屏机子上跑着（`node server/karaoke.mjs`），再确认地址可达。用浏览器打开 `http://<大屏 IP>:7777/api/state`，能看到一段 JSON 就说明服务正常。
-- 弹窗报 `Unexpected token '<', "<!DOCTYPE "... is not valid JSON`：配置的地址返回的是网页，不是 KaraQueue 的 JSON。基本都是漏了 `:7777`，请求打到了 80 端口上的其他服务，比如路由器管理页。地址要写成 `http://192.168.1.5:7777` 这种形式。
-- YouTube 条目一直“元数据未获取”、总是纯链接入队：服务器直连不上 youtube.com，也没找到可用代理。打开 macOS 系统代理（HTTP 模式，只开 SOCKS 不算），或设置 `KARAQUEUE_PROXY=127.0.0.1:7890`（端口填代理的），然后重启服务端。启动日志会写它发现了哪个代理。
-- 大屏不停开新标签页：大屏上的插件是旧版。到 `chrome://extensions` 重载插件，之后只会复用记住的那一个标签页。
-- 客人不需要装插件。插件只驱动大屏浏览器，手机点歌直接访问 `http://<大屏 IP>:7777`。
-- 页面在跳过等操作后看起来没跟上：手机浏览器会冻结后台标签，也会掐断 SSE 连接。页面回到前台会立刻对账，可见期间每 5 秒轮询兜底。把标签切回前台就行。
+- 提交表单认得上面所有链接形态，重复提交用人话报错拒绝。
+- NOW / NEXT 卡片显示正在播放和下一首；队列行对本人点的歌带 ✕ 撤回按钮。
+- 长标题不折行：悬停（触屏则点一下）才向左滚一遍，滚到末尾停住；放得下的标题不滚。
+- 提交和撤回的结果用屏幕底部的短 toast；失败会原样复述服务器的本地化句子，4.5 秒后消失（点击可提前关掉）。
+- 页头可折叠抽屉（☰）显示主机的 Wi-Fi 名称、局域网地址和直达点歌页的二维码。二维码编码的是当前请求实际到达的地址，VPN、隧道接口不会把它带偏。
+- 已播历史在二级页面，旧的在上、带序号——序号 1 是全场第一首；"再点一次"把歌曲排回队列。
+- 手机端没有跳过按钮，切歌是房主的职责。
 
-## 注意事项
+### 房主（管理后台 / 插件弹窗）
 
-- 关掉 B 站播放器的“自动连播”，YouTube 的“自动播放下一个视频”同理。否则页面原生连播会和插件切歌抢。
-- 队列状态存在 `server/queue.json`，元数据缓存在 `server/meta-cache.json`，两个文件都已 gitignore。遇到诡异状态先 `pkill -f karaoke.mjs` 再重启；想彻底清空就删掉这两个文件。
-- 插件弹窗的跳过立即生效，靠“打开当前曲目”触发的即时对账。其他远端变更由 alarm 每 15 秒轮询一次同步。
-- YouTube 已支持单个视频（元数据走 oEmbed，无时长显示）；歌单按单个视频处理。niconico 还在计划中。服务器和大屏浏览器都要有能连上 YouTube 的网络。
-- **免责声明**：本项目与哔哩哔哩、YouTube 无关联。视频一律通过各家官方网页播放器播放，服务端只请求公开接口，用来解析标题等元数据。
+- 跳过当前曲目，立即生效——弹窗或后台都能发。
+- 管理队列：移出（✕）、按住把手拖拽、"提前"一键置顶、聚焦把手后按 ↑ / ↓ 方向键。
+- 重播已播的任意一首：排回队列；房间空闲时立刻开播。
+
+### 房间规则
+
+后台里是两个开关：
+
+- **允许队列重复。** 关（默认）：正在播放或已在队列的重复提交会被拒绝；开：同一首歌可以叠多条。
+- **公平轮唱，每人限一首。** 开启后每人同时最多一首在唱或在排。识别用浏览器 Cookie，改昵称、刷页面都不影响。被锁定期间，这个客人的"加入队列"按钮置灰、昵称输入框锁定，直到自己的歌唱完。撤回队列里的歌会释放名额。
+
+### 语言
+
+两个页面顶部都是 `En | 简 | 繁` 段式切换（滑动的胶囊高亮，不是下拉框）。选择存在浏览器里，刷新不丢，默认简体中文。界面文案在 `server/static/i18n/`，每个语言一个 JSON；服务端生成的提示（拒绝、警告）通过 `X-Karaqueue-Lang` 请求头跟随页面语言。不带这个头的调用方——比如插件弹窗——看到的是中文。
+
+## 错误排查
+
+- **弹窗报 `TypeError: Failed to fetch`：** 配置的地址没有应答。先确认服务在大屏机器上跑着（`node server/karaoke.mjs`），再用浏览器开 `http://<大屏 IP>:7777/api/state`，能看到 JSON 就说明服务正常。
+- **弹窗报 `Unexpected token '<', "<!DOCTYPE "... is not valid JSON：** 配置的地址返回了网页而不是 KaraQueue 的 JSON，基本都是漏了 `:7777`、请求打到了 80 端口的别的服务（比如路由器管理页）。地址要写成 `http://192.168.1.5:7777` 这种形式。
+- **不自动切歌 / 跳过上报被无视（Firefox）：** 插件没有站点访问权限。开 `about:addons` → KaraQueue → 权限，或在弹窗里点一次**保存**并再次批准授权。
+- **YouTube 条目一直"元数据未获取"、总按纯链接入队：** 服务器直连不上 youtube.com，也没找到代理。打开 macOS 系统代理（HTTP 模式，只开 SOCKS 不算），或设 `KARAQUEUE_PROXY=127.0.0.1:7890`（端口填代理的），然后重启服务端。启动日志会写它发现了哪个代理。
+- **大屏不停开新标签页：** 那台机上的插件是旧版。到 `chrome://extensions`（或 `about:debugging`）重载一次。
+- **页面在跳过等操作后没跟上：** 手机浏览器冻结后台标签、掐断 SSE。把标签切回前台——回前台即对账，可见期间每 5 秒轮询兜底。
+- **切歌在歌曲结尾附近变慢或抢跳：** 播放器自身的连播在和插件抢。关掉 B 站"自动连播"，关掉 YouTube 的"自动播放下一个视频"。
+
+## 贡献
+
+欢迎 PR。保证局域网好放养的几条底线：
+
+- **零运行时依赖。** 服务端和页面是原生 JS，只用 Firefox 与 Chromium 一致的 Web API；新功能不应引入 npm 包、构建步骤或 CDN 资源。
+- **设计 token 每个端一份：** 服务端页面在 `server/static/ui/theme.css`，插件在 `extension/popup.css`——插件回抄 tokens，因为扩展页面加载不了服务端的文件。
+- **交互改动要验证。** 惯用流程：本地预览服务，CDP 驱动的页面检查覆盖每种状态（正常、空、超长内容、报错），`node --check` 过语法，最后目检确认。
+- **提交格式：** `feat(scope): …` / `fix(scope): …` / `docs:` / `chore:`，scope 取 `server` 或 `extension`。
+- **仓库结构：**
+
+  ```
+  server/karaoke.mjs      队列服务，只用 Node 内置模块
+  server/static/          点歌页与管理后台（无框架单文件）
+  server/static/i18n/     界面文案，每语言一个 JSON，附共享 i18n 内核
+  server/static/ui/       两页共享部件：设计 token 与浏览器端部件
+  extension/              浏览器插件（MV3）
+  ```
+
+- **新增翻译：** 复制 `server/static/i18n/zh-CN.json` 翻译值，把语言代码注册进 `static/i18n/i18n.js` 的 `I18N_LANGS`，并在 `I18N_SWITCH_CAPTION` 加段名。文档变更时两份 README 一起改。
+
+## Misc
+
+### 接口速览
+
+调试用，全部 JSON：
+
+- 公共：`GET /`、`GET /api/state`、`GET /api/events`（SSE）；`POST /api/submit` `{input, by, uid}`、`POST /api/withdraw` `{id, uid}`、`POST /api/advance`、`POST /api/skip`
+- 管理端口（7778）：另有 `GET /api/config`、`POST /api/config` `{allowQueuedDuplicates, oneSongPerGuest}`、`POST /api/delete` `{id}`、`POST /api/reorder` `{id, direction: up|down|top}` 或 `{id, index: 从0开始的落位}`、`POST /api/rerequest` `{id}`
+
+### 状态与复位
+
+队列在 `server/queue.json`，元数据缓存 `server/meta-cache.json`，两个文件都已 gitignore。状态诡异就 `pkill -f karaoke.mjs` 再重启；想彻底清空删掉这两个文件。
+
+### 已知限制
+
+- 仅限局域网，明文 http，无 TLS、无登录——局域网里的任何人都能打开管理后台。
+- 仅 B 站和 YouTube；歌单按单个视频处理；niconico 暂未纳入。
+- 服务端和大屏浏览器都需要能连上 YouTube 的网络路径（直连或代理）；B 站一律直连。
+- 公平轮唱和撤回的归属按浏览器（uid Cookie）算，不按昵称。
+- 重启后会话从 `server/queue.json` 恢复；删两个状态文件即干净开局。
+
+### 附注
+
+- **免责声明：** 本项目与哔哩哔哩、YouTube 无关联。视频一律通过各家官方网页播放器播放，服务端只请求公开接口解析标题等元数据。
+- 以 [MIT 许可证](LICENSE) 发布。
