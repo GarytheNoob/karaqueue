@@ -14,6 +14,7 @@
   "index.submit": "Join queue",
   "index.history_link": "Played history",
   "index.queue_count": "{n} in queue",
+  "index.queue_time": "~{t}",
   "side.title": "LAN access",
   "side.btn": "LAN access",
   "side.close": "Close",

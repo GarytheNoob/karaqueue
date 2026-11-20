@@ -74,6 +74,7 @@
           <div class="sec-head">
             <h2 data-i18n="head.queue">队列</h2>
             <span class="count" id="queueCount"></span>
+            <span class="count" id="queueTime"></span>
           </div>
           <div id="queue"></div>
         </section>
@@ -199,7 +200,9 @@ function applyFairMode() {
 
 function render(state) {
   lastState = state;
+  const queueSeconds = state.queue.reduce((sum, item) => sum + (Number(item.duration_s) || 0), 0);
   $("queueCount").textContent = state.queue.length ? t("index.queue_count", { n: state.queue.length }) : "";
+  $("queueTime").textContent = queueSeconds ? t("index.queue_time", { t: fmtDur(queueSeconds) }) : "";
   $("historyCount").textContent = state.history.length ? String(state.history.length) : "";
   $("now").innerHTML = state.current ? nowPanel(state.current) : `<div class="empty empty--now">${t("empty.now")}</div>`;
   $("queue").innerHTML = state.queue.length

@@ -264,6 +264,12 @@ img {
   font-size: 12px;
 }
 
+/* Second counter (queue total time) sits beside the first, not pushed
+ * apart by the auto margin reserved for the leading edge. */
+.sec-head .count + .count {
+  margin-left: 0;
+}
+
 .hint {
   max-width: 68ch;
   margin: -4px 0 10px;
