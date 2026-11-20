@@ -36,7 +36,7 @@ A LAN karaoke queue machine. Guests submit bilibili or YouTube videos from their
 - **Three interface languages** (English / Simplified / Traditional) with a header switcher; server-generated messages follow the chosen page language.
 - **Chromium and Firefox.** One Manifest V3 extension for both: Chromium runs the background as a service worker, Firefox as an event page.
 
-About metadata: bilibili throttles its metadata API under load (often HTTP 412), but a submission still succeeds — the server keeps a 24-hour cache, then falls back to parsing the video page's `window.__INITIAL_STATE__`, and only an invalid video id (codes -400/-404) is rejected. YouTube metadata comes from the official keyless oEmbed endpoint (title, author, thumbnail; no duration). When nothing can be fetched — deleted or region-locked videos, or a network that cannot reach either service — the track queues link-only and still plays, marked "metadata missing".
+About metadata: bilibili throttles its metadata API under load (often HTTP 412), but a submission still succeeds — the server keeps a 24-hour cache, then falls back to parsing the video page's `window.__INITIAL_STATE__`, and only an invalid video id (codes -400/-404) is rejected. YouTube metadata comes from the official keyless oEmbed endpoint (title, author, thumbnail); a best-effort watch-page fetch adds the duration. When nothing can be fetched — deleted or region-locked videos, or a network that cannot reach either service — the track queues link-only and still plays, marked "metadata missing".
 
 ## Build and Install
 

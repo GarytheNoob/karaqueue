@@ -79,8 +79,10 @@ const sseClients = new Set();
 // Overrides let integration tests point the resolver at a local mock.
 const VIEW_API = process.env.KARAQUEUE_VIEW_API || "https://api.bilibili.com/x/web-interface/view";
 const SPI_API = process.env.KARAQUEUE_SPI_API || "https://api.bilibili.com/x/frontend/finger/spi";
-// Keyless, official: title/author/thumb only, no duration.
+// Keyless, official: title/author/thumb. The duration lives in the watch
+// page's player response, so a second best-effort fetch fills it in.
 const OEMBED_API = process.env.KARAQUEUE_OEMBED_API || "https://www.youtube.com/oembed";
+const YT_WATCH_PAGE = process.env.KARAQUEUE_YT_WATCH_PAGE || "https://www.youtube.com/watch";
 const META_CACHE_FILE = path.join(ROOT, "meta-cache.json");
 const META_CACHE_TTL_MS = 24 * 3600 * 1000;
 const META_CACHE_LIMIT = 300;
@@ -218,7 +220,7 @@ function rememberView(parsed, view) {
   saveMetaCache();
 }
 
-/** Persist the trimmed YouTube oEmbed payload under a `yt:` prefixed key. */
+/** Persist the trimmed YouTube metadata under a `yt:` prefixed key. */
 function rememberYouTubeMeta(videoId, meta) {
   metaCache.set(`yt:${videoId}`, {
     t: Date.now(),
@@ -226,6 +228,7 @@ function rememberYouTubeMeta(videoId, meta) {
       title: meta.title ?? "",
       author_name: meta.author_name ?? "",
       thumbnail_url: meta.thumbnail_url ?? "",
+      duration_s: Number(meta.duration_s ?? 0),
     },
   });
   saveMetaCache();
@@ -804,6 +807,42 @@ async function fetchYouTubeMeta(videoId) {
   return JSON.parse(out.text);
 }
 
+/** Pull the duration in seconds out of a YouTube watch page. The player
+ *  response's "lengthSeconds" is authoritative; the itemprop meta tag is
+ *  a fallback for pages served without it. Returns 0 when neither is
+ *  present (live streams, consent/bot walls). */
+function parseYouTubeDuration(html) {
+  const seconds = html.match(/"lengthSeconds"\s*:\s*"?(\d+)"?/);
+  if (seconds) return Number(seconds[1]);
+
+  const iso = html.match(/itemprop="duration"\s+content="([^"]+)"/);
+  if (!iso) return 0;
+  const m = iso[1].match(/^PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?$/);
+  if (!m) return 0;
+  return Number(m[1] ?? 0) * 3600 + Number(m[2] ?? 0) * 60 + Number(m[3] ?? 0);
+}
+
+/** Best-effort duration lookup: oEmbed carries no duration, so read the
+ *  watch page. Failures are not fatal - the item queues without one. */
+async function fetchYouTubeDuration(videoId) {
+  try {
+    const out = await httpGet(
+      `${YT_WATCH_PAGE}?v=${encodeURIComponent(videoId)}&hl=en`,
+      {
+        "User-Agent": BROWSER_UA,
+        Accept: "text/html,application/xhtml+xml,*/*",
+        "Accept-Language": "en-US,en;q=0.9",
+      },
+      12000,
+    );
+    if (out.status !== 200) return 0;
+    return parseYouTubeDuration(out.text);
+  } catch (err) {
+    console.warn(`[karaqueue] youtube duration fetch failed (${videoId}):`, err.message);
+    return 0;
+  }
+}
+
 /**
  * Resolve YouTube metadata with the same cache/degrade ladder as
  * bilibili: fresh cache -> no network; stale cache -> degraded warning;
@@ -813,14 +852,20 @@ async function resolveYouTubeMeta(videoId) {
   const key = `yt:${videoId}`;
   const cached = metaCache.get(key);
 
-  if (cached?.meta && Date.now() - cached.t < META_CACHE_TTL_MS) {
+  // Entries written before duration support lack the field; treat them
+  // as stale so the next submission backfills it.
+  if (cached?.meta && cached.meta.duration_s !== undefined && Date.now() - cached.t < META_CACHE_TTL_MS) {
     return { meta: cached.meta, warning: null };
   }
 
   try {
-    const meta = await fetchYouTubeMeta(videoId);
-    rememberYouTubeMeta(videoId, meta);
-    return { meta, warning: null };
+    const [meta, duration] = await Promise.all([
+      fetchYouTubeMeta(videoId),
+      fetchYouTubeDuration(videoId),
+    ]);
+    const full = { ...meta, duration_s: duration };
+    rememberYouTubeMeta(videoId, full);
+    return { meta: full, warning: null };
   } catch (err) {
     console.warn(`[karaqueue] youtube metadata fetch failed (${videoId}):`, err.message);
     // The video itself is gone: reject the submission outright.
@@ -836,8 +881,7 @@ async function resolveYouTubeMeta(videoId) {
   }
 }
 
-/** Build the YouTube queue item; runtime details come from the player,
- * since oEmbed has no duration and YouTube has no numbered pages. */
+/** Build the YouTube queue item; YouTube has no numbered pages. */
 function makeYouTubeItem(videoId, meta, requestedBy) {
   return {
     id: `${videoId}:p1`,
@@ -849,7 +893,7 @@ function makeYouTubeItem(videoId, meta, requestedBy) {
     title_missing: !(meta?.title),
     part: "",
     uploader: meta?.author_name ?? "",
-    duration_s: 0,
+    duration_s: meta?.duration_s ?? 0,
     thumbnail: meta?.thumbnail_url ?? "",
     web_url: `https://www.youtube.com/watch?v=${videoId}`,
     requested_by: requestedBy || "anonymous",
