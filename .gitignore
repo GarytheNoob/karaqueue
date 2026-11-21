@@ -14,3 +14,6 @@ node_modules/
 # Locally installed third-party agent skills (not committed)
 .opencode/skills/style-review/
 .opencode/skills/zh-tech-writing/
+
+# WorkBuddy session data (memory, local artifacts)
+.workbuddy-ai/
