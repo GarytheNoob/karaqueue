@@ -274,7 +274,22 @@ function saveState() {
   // Atomic write: write a temp file first, then rename over the target.
   const tmp = `${DATA_FILE}.tmp`;
   fs.writeFileSync(tmp, JSON.stringify(state, null, 2));
-  fs.renameSync(tmp, DATA_FILE);
+  // Windows antiviruses and the search indexer briefly hold freshly
+  // written files, making the rename throw EPERM/EACCES; absorb those
+  // transient hits with a couple of retries before giving up.
+  for (let attempt = 0; ; attempt++) {
+    try {
+      fs.renameSync(tmp, DATA_FILE);
+      return;
+    } catch (err) {
+      if (attempt < 2 && (err.code === "EPERM" || err.code === "EACCES")) {
+        // Synchronous park: the main thread sleeps 50ms, then retries.
+        Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 50);
+        continue;
+      }
+      throw err;
+    }
+  }
 }
 
 /* ------------------------------------------------------------------ */
@@ -303,6 +318,9 @@ function loadProxyConfig() {
   }
   if (!activeProxy && process.platform === "darwin") {
     activeProxy = macOSSystemProxy();
+  }
+  if (!activeProxy && process.platform === "win32") {
+    activeProxy = windowsSystemProxy();
   }
   if (activeProxy) {
     console.log(
@@ -342,6 +360,42 @@ function macOSSystemProxy() {
     }
   } catch {
     /* headless or no scutil: stay direct */
+  }
+  return null;
+}
+
+/** Windows "system proxy" is per-user WinINET state in the registry
+ *  (HKCU\...\Internet Settings) - proxy tools like Clash flip it, env
+ *  vars are usually unset. reg keeps the value names and types in
+ *  English on every locale, so plain parses hold up. */
+function windowsSystemProxy() {
+  try {
+    const out = decodeConsoleOutput(execFileSync("reg", [
+      "query",
+      "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settings",
+    ], { timeout: 3000 }));
+    const enabled = /ProxyEnable\s+REG_DWORD\s+0x([0-9a-fA-F]+)/i.exec(out)?.[1];
+    const raw = out.match(/ProxyServer\s+REG_SZ\s+(\S+)/i)?.[1];
+    if (Number(enabled, 16) === 1 && raw) {
+      // A bare "host:port" covers every protocol; otherwise WinINET
+      // stores a "http=...;https=...;socks=..." list and we prefer the
+      // HTTPS entry (our tunnel speaks CONNECT, which it answers too).
+      let pick = raw;
+      if (raw.includes("=")) {
+        const parts = {};
+        for (const piece of raw.split(";")) {
+          const [key, val] = piece.split("=", 2).map((s) => s.trim());
+          if (key && val) parts[key.toLowerCase()] = val;
+        }
+        pick = parts.https ?? parts.http ?? null;
+      }
+      if (pick) return parseProxy(pick, "Windows system proxy");
+    }
+    if (/AutoConfigURL\s+REG_SZ/i.test(out)) {
+      console.log("[karaqueue] system proxy is a PAC script (not supported); cross-network requests stay direct");
+    }
+  } catch {
+    /* no registry access or reg missing (= not Windows): stay direct */
   }
   return null;
 }
@@ -1202,10 +1256,19 @@ function serveEvents(req, res) {
 
 let hostInfoCache = null;
 
-/** All routable IPv4 addresses of this machine's LAN interfaces. */
+// Prefer common Wi-Fi and Ethernet names when a loopback request gives
+// us no hint about which interface guests can reach.
+function lanInterfacePriority(name) {
+  if (/vpn|tun|tap\d|tailscale|vethernet|virtual|vmware|vbox|docker|^br-|^wg\d|zerotier/i.test(name)) return 2;
+  if (/^(wi-?fi|wlan|ethernet|以太网|乙太網|无线|無線|en\d|en[opsx]|eth\d|wl[opx])/i.test(name)) return 0;
+  return 1;
+}
+
 function lanIPv4s() {
   const out = [];
-  for (const list of Object.values(os.networkInterfaces())) {
+  const interfaces = Object.entries(os.networkInterfaces())
+    .sort(([a], [b]) => lanInterfacePriority(a) - lanInterfacePriority(b));
+  for (const [, list] of interfaces) {
     for (const it of list ?? []) {
       if (it.family !== "IPv4" || it.internal) continue;
       if (/^169\.254\./.test(it.address)) continue; // link-local, useless for guests
@@ -1213,6 +1276,19 @@ function lanIPv4s() {
     }
   }
   return out;
+}
+
+/** Console tools on Windows emit whatever codepage the console runs
+ *  (GBK/936 on zh-CN systems), so capture raw bytes and decode by trying
+ *  UTF-8 first, then GBK when the UTF-8 pass shows replacement chars. */
+function decodeConsoleOutput(buf) {
+  const utf8 = Buffer.from(buf).toString("utf8");
+  if (!utf8.includes("\uFFFD")) return utf8;
+  try {
+    return new TextDecoder("gbk").decode(buf); // full-ICU builds only
+  } catch {
+    return utf8; // ICU-lite build: keep the lossy decode
+  }
 }
 
 /** Best-effort Wi-Fi SSID. Host systems guard it behind privacy
@@ -1235,6 +1311,15 @@ function hostSsid() {
     } else if (process.platform === "linux") {
       const ssid = execFileSync("iwgetid", ["-r"], { encoding: "utf8", timeout: 3000 }).trim();
       if (ssid) return ssid;
+    } else if (process.platform === "win32") {
+      // "BSSID" lines cannot match: the regex anchors SSID at the start
+      // of the line. Labels stay "SSID" even on localized Windows; when
+      // they do not, or no Wi-Fi NIC exists, we report "not detected".
+      const out = decodeConsoleOutput(
+        execFileSync("netsh", ["wlan", "show", "interfaces"], { timeout: 3000 }),
+      );
+      const row = out.match(/^\s+SSID\s*:\s*(.+?)\s*$/m);
+      if (row?.[1]) return row[1];
     }
   } catch {
     /* missing tooling or no association: fall through to "not detected" */
@@ -1244,7 +1329,7 @@ function hostSsid() {
 
 /** The address to advertise: the IPv4 the very request arrived on, so
  *  guests connected over VPN/tunnel interfaces still get a QR that
- *  reaches them; falls back to the first enumerated LAN IPv4. */
+ *  reaches them; loopback requests use the preferred LAN interface. */
 function primaryLanIp(req) {
   const a = String(req.socket.localAddress || "").replace(/^::ffff:/, "");
   if (/^\d+\.\d+\.\d+\.\d+$/.test(a) && !/^(127\.|0\.)/.test(a)) return a;
