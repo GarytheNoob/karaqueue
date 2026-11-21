@@ -1256,10 +1256,19 @@ function serveEvents(req, res) {
 
 let hostInfoCache = null;
 
-/** All routable IPv4 addresses of this machine's LAN interfaces. */
+// Prefer common Wi-Fi and Ethernet names when a loopback request gives
+// us no hint about which interface guests can reach.
+function lanInterfacePriority(name) {
+  if (/vpn|tun|tap\d|tailscale|vethernet|virtual|vmware|vbox|docker|^br-|^wg\d|zerotier/i.test(name)) return 2;
+  if (/^(wi-?fi|wlan|ethernet|以太网|乙太網|无线|無線|en\d|en[opsx]|eth\d|wl[opx])/i.test(name)) return 0;
+  return 1;
+}
+
 function lanIPv4s() {
   const out = [];
-  for (const list of Object.values(os.networkInterfaces())) {
+  const interfaces = Object.entries(os.networkInterfaces())
+    .sort(([a], [b]) => lanInterfacePriority(a) - lanInterfacePriority(b));
+  for (const [, list] of interfaces) {
     for (const it of list ?? []) {
       if (it.family !== "IPv4" || it.internal) continue;
       if (/^169\.254\./.test(it.address)) continue; // link-local, useless for guests
@@ -1320,7 +1329,7 @@ function hostSsid() {
 
 /** The address to advertise: the IPv4 the very request arrived on, so
  *  guests connected over VPN/tunnel interfaces still get a QR that
- *  reaches them; falls back to the first enumerated LAN IPv4. */
+ *  reaches them; loopback requests use the preferred LAN interface. */
 function primaryLanIp(req) {
   const a = String(req.socket.localAddress || "").replace(/^::ffff:/, "");
   if (/^\d+\.\d+\.\d+\.\d+$/.test(a) && !/^(127\.|0\.)/.test(a)) return a;
