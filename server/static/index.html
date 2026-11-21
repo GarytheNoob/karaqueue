@@ -3,150 +3,107 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="theme-color" content="#000000" />
 <title>KaraQueue 点歌</title>
-<style>
-  :root { color-scheme: dark; }
-  * { box-sizing: border-box; }
-  body {
-    margin: 0; font-family: system-ui, -apple-system, "PingFang SC", sans-serif;
-    background: #101014; color: #e8e8ee; min-height: 100vh;
-  }
-  main { max-width: 560px; margin: 0 auto; padding: 20px 16px 48px; }
-  h1 { font-size: 20px; margin: 8px 0 16px; }
-  h2 { font-size: 14px; margin: 24px 0 8px; color: #9aa; letter-spacing: .05em; }
-  form { display: flex; flex-direction: column; gap: 8px; }
-  .history-link {
-    display: block; text-align: center; text-decoration: none;
-    background: #17171d; border: 1px dashed #33333d; border-radius: 10px;
-    padding: 10px; color: #7ab; font-size: 13px;
-  }
-  .view { display: none; }
-  .view.active { display: block; }
-  .back { color: #7ab; text-decoration: none; font-size: 14px; flex: none; }
-  input {
-    background: #1c1c22; border: 1px solid #33333d; border-radius: 10px;
-    padding: 12px 14px; color: inherit; font-size: 16px; width: 100%;
-  }
-  input:focus { outline: none; border-color: #58a6ff; }
-  button {
-    background: #2f6fed; color: #fff; border: 0; border-radius: 10px;
-    padding: 12px; font-size: 16px; font-weight: 600; cursor: pointer;
-  }
-  button:disabled { opacity: .5; cursor: not-allowed; }
-  input:disabled { opacity: .5; }
-  .msg { min-height: 20px; font-size: 13px; color: #f66; margin: 2px 0; }
-  .msg.ok { color: #5d5; }
-  .card {
-    background: #17171d; border: 1px solid #26262e; border-radius: 12px;
-    padding: 10px 12px; margin-bottom: 8px;
-  }
-  .card .title { font-size: 14px; line-height: 1.4; }
-  .card .meta { font-size: 12px; color: #888; margin-top: 4px; display: flex; justify-content: space-between; }
-  .card.now { border-color: #2f6fed; }
-  .card.next { border-color: #e0a33f; }
-  .tag {
-    font-size: 11px; background: #2f6fed; color: #fff; border-radius: 4px;
-    padding: 1px 6px; margin-right: 6px; vertical-align: 2px;
-  }
-  .tag.done { background: #444; color: #aaa; }
-  .tag.next { background: #e0a33f; color: #2b1d00; }
-  .tag.mine { background: #2fa25c; color: #fff; }
-  .actions { display: flex; gap: 8px; margin-top: 8px; }
-  .mini {
-    font-size: 12px; font-weight: 600; padding: 5px 10px;
-    border-radius: 8px; background: #26262e; color: #eee;
-  }
-  .mini:active { background: #33333d; }
-  .idx {
-    color: #67718a; font-size: 12px; font-weight: 600;
-    margin-right: 7px; font-variant-numeric: tabular-nums;
-  }
-  .empty { color: #666; font-size: 13px; padding: 6px 2px; }
-  header { display: flex; justify-content: space-between; align-items: baseline; }
-  header small { color: #666; }
-  .row-head { display: flex; justify-content: space-between; align-items: baseline; }
-  .row-head small { color: #666; }
-  #lang {
-    background: #1c1c22; border: 1px solid #33333d; color: #ddd;
-    border-radius: 8px; padding: 4px 6px; font-size: 13px;
-  }
-  .hdr-right { display: inline-flex; gap: 8px; align-items: center; color: #666; }
-  .side-btn {
-    background: #17171d; border: 1px solid #33333d; color: #ccc;
-    border-radius: 8px; padding: 4px 10px; font-size: 14px; cursor: pointer;
-  }
-  .side-btn:active { background: #26262e; }
-  #sideOverlay {
-    position: fixed; inset: 0; background: rgba(0,0,0,.45); z-index: 40;
-  }
-  #sideOverlay[hidden] { display: none; }
-  #sidebar {
-    position: fixed; top: 0; left: 0; bottom: 0; z-index: 41;
-    width: min(340px, 86vw); padding: 16px; overflow-y: auto;
-    background: #17171d; border-right: 1px solid #33333d;
-    transform: translateX(-102%); transition: transform .22s ease;
-  }
-  #sidebar.open { transform: translateX(0); }
-  .side-head {
-    display: flex; justify-content: space-between; align-items: center;
-    font-size: 15px; font-weight: 600; margin-bottom: 6px;
-  }
-  .side-x {
-    background: #26262e; color: #eee; border: 0; border-radius: 8px;
-    padding: 4px 12px; font-size: 14px; cursor: pointer; font-weight: 400;
-  }
-  #sidebar dt { color: #888; font-size: 12px; margin-top: 12px; }
-  #sidebar dd { margin: 2px 0 0; font-size: 14px; word-break: break-all; }
-  #qrBox {
-    display: flex; justify-content: center; margin-top: 16px;
-    background: #fff; border-radius: 10px; padding: 10px;
-  }
-  #qrBox svg { display: block; width: 100%; max-width: 216px; height: auto; }
-  .side-hint { color: #888; font-size: 12px; margin: 10px 0 0; line-height: 1.5; }
-</style>
+<link rel="stylesheet" href="/ui/theme.css" />
 </head>
 <body>
-<main>
-  <header>
-    <h1 data-i18n="index.title">KaraQueue 点歌</h1>
-    <small class="hdr-right">
-      <button id="sideBtn" class="side-btn" aria-label="局域网接入" type="button">☰</button>
-      <select id="lang"></select>
-    </small>
-  </header>
+<main class="shell shell--split">
+  <section id="view-main" class="view active">
+    <!-- 56px bar: the product's mark and name, then the page's own tools.
+         Same bar on both pages, one ground, one rule. -->
+    <header class="bar">
+      <div class="brand">
+        <svg class="mark" viewBox="0 0 20 20" fill="none" stroke="currentColor"
+             stroke-width="1.6" stroke-linecap="round" aria-hidden="true" focusable="false">
+          <rect x="7.1" y="2.2" width="5.8" height="9.6" rx="2.9" />
+          <path d="M4.4 9.2a5.6 5.6 0 0 0 11.2 0" />
+          <path d="M10 14.8v3.1M7.4 17.9h5.2" />
+        </svg>
+        <h1><span class="wordmark">KaraQueue </span><span data-i18n="index.title_short">点歌</span></h1>
+      </div>
+      <div class="bar-tools">
+        <span id="langSwitch"></span>
+        <button id="sideBtn" class="icon-btn" aria-label="局域网接入" type="button">
+          <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"
+               stroke-linecap="round" aria-hidden="true" focusable="false">
+            <path d="M2.6 7.4a13.2 13.2 0 0 1 14.8 0" />
+            <path d="M5.5 10.8a8.6 8.6 0 0 1 9 0" />
+            <path d="M8.3 14.1a4.1 4.1 0 0 1 3.4 0" />
+            <circle cx="10" cy="17" r="0.9" fill="currentColor" stroke="none" />
+          </svg>
+        </button>
+      </div>
+    </header>
 
-  <section id="view-main" class="view">
-    <form id="f">
-      <input id="by" autocomplete="nickname" data-i18n-placeholder="index.by_placeholder" />
-      <input id="input" required data-i18n-placeholder="index.input_placeholder" />
-      <button id="btn" type="submit" data-i18n="index.submit">加入队列</button>
-      <div class="msg" id="msg"></div>
-    </form>
+    <div class="split">
+      <!-- The slip. Requesting is why the page exists, so it opens the
+           page on a phone; on a laptop it keeps its own column. -->
+      <div class="split__aside">
+        <form id="f" class="panel slip">
+          <label class="field" for="by">
+            <span class="lbl" data-i18n="index.by_label">你的昵称</span>
+            <input id="by" name="by" autocomplete="nickname"
+                   data-i18n-placeholder="index.by_placeholder" />
+          </label>
+          <label class="field" for="input">
+            <span class="lbl" data-i18n="index.input_label">歌曲链接</span>
+            <input id="input" name="input" required
+                   data-i18n-placeholder="index.input_placeholder" />
+          </label>
+          <button id="btn" class="btn btn--block" type="submit" data-i18n="index.submit">加入队列</button>
+        </form>
+        <a class="linkrow" href="#/history">
+          <span data-i18n="index.history_link">已播历史</span>
+          <span class="count" id="historyCount"></span>
+          <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"
+               stroke-linecap="round" aria-hidden="true" focusable="false"><path d="M8 4.5l6 5.5-6 5.5" /></svg>
+        </a>
+      </div>
 
-    <a class="history-link" href="#/history"><span data-i18n="index.history_link">已播历史</span> <span id="historyCount"></span> ›</a>
+      <div class="split__main">
+        <section class="sec">
+          <div class="sec-head">
+            <span class="eq" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></span>
+            <h2 data-i18n="head.now_playing">正在播放</h2>
+          </div>
+          <div id="now"></div>
+        </section>
 
-    <h2 data-i18n="head.now_playing">正在播放</h2>
-    <div id="now"></div>
-
-    <h2 class="row-head"><span data-i18n="head.queue">队列</span><small id="queueCount"></small></h2>
-    <div id="queue"></div>
+        <section class="sec">
+          <div class="sec-head">
+            <h2 data-i18n="head.queue">队列</h2>
+            <span class="count" id="queueCount"></span>
+            <span class="count" id="queueTime"></span>
+          </div>
+          <div id="queue"></div>
+        </section>
+      </div>
+    </div>
   </section>
 
   <section id="view-history" class="view">
-    <header>
+    <header class="bar">
+      <a class="back" href="#/">
+        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"
+             stroke-linecap="round" aria-hidden="true" focusable="false"><path d="M12 4.5L6 10l6 5.5" /></svg>
+        <span data-i18n="index.back">返回点歌</span>
+      </a>
       <h1 data-i18n="head.history">已播历史</h1>
-      <a class="back" href="#/" data-i18n="index.back">‹ 返回点歌</a>
     </header>
-    <div id="history"></div>
+    <div id="history" class="list-plain"></div>
   </section>
 </main>
 
-<!-- LAN access sidebar: how guests reach this page with a phone. -->
+<!-- LAN access drawer: how guests reach this page with a phone. -->
 <div id="sideOverlay" hidden></div>
 <aside id="sidebar" aria-hidden="true">
   <div class="side-head">
     <span data-i18n="side.title">局域网接入</span>
-    <button id="sideClose" class="side-x" type="button" aria-label="关闭">×</button>
+    <button id="sideClose" class="side-x" type="button" aria-label="关闭">
+      <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"
+           stroke-linecap="round" aria-hidden="true" focusable="false"><path d="M5 5l10 10M15 5L5 15" /></svg>
+    </button>
   </div>
   <dl>
     <dt data-i18n="side.wifi">Wi-Fi 名称</dt>
@@ -160,6 +117,7 @@
 
 <script src="i18n/i18n.js"></script>
 <script src="vendor/qrcode.js"></script>
+<script src="ui/ui.js"></script>
 <script>
 "use strict";
 /* Client logic: submit + live state via SSE. Kept vanilla so the whole
@@ -167,7 +125,6 @@
 window.I18N_TITLE_KEY = "index.title";
 const $ = (id) => document.getElementById(id);
 const byInput = $("by");
-const msg = $("msg");
 
 // Persist the nickname between sessions.
 byInput.value = localStorage.getItem("karaqueue:by") || "";
@@ -185,54 +142,46 @@ const UID = (() => {
   return v;
 })();
 
-function esc(s) {
-  return String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-}
-
-/** Titles stored server-side may lack metadata (title_missing flag);
- *  each client renders its own localized suffix. */
-function titleText(item) {
-  return String(item.title ?? "") + (item.title_missing ? t("card.meta_missing") : "");
-}
-
-function fmtDur(s) {
-  if (!s) return "";
-  const m = Math.floor(s / 60), r = s % 60;
-  return `${m}:${String(r).padStart(2, "0")}`;
-}
-
-function label(item) {
-  const part = item.page_count > 1 ? ` · P${item.page}` : "";
-  // bilibili stays unmarked (the default), youtube gets a red badge.
-  const src = item.platform === "youtube" ? ` <span style="color:#d33">[YT]</span>` : "";
-  return `${esc(titleText(item))}${src}${part ? ` <span style="color:#7ab">${part}</span>` : ""}`;
-}
-
-function card(item, { now = false, next = false, index = 0, withdraw = false } = {}) {
-  const part = item.page_count > 1 ? ` · P${item.page}` : "";
-  // "Mine" badge (green) marks every track this browser requested,
-  // everywhere: now playing, queue and history.
+/* One line of the running order: rank, title, requester, duration. The
+ * chips carry identity (mine) and the next slot; they never repeat the
+ * section heading. History rows pass `index` and no action. */
+function trackRow(item, { next = false, index = 0, withdraw = false } = {}) {
   const mine = !!item.requester_uid && item.requester_uid === UID;
-  const mineTag = mine ? `<span class="tag mine">${t("tag.mine")}</span>` : "";
-  const tag = now
-    ? `<span class="tag">NOW</span>${mineTag}`
-    : next
-      ? `<span class="tag next">NEXT</span>${mineTag}`
-      : `${mineTag}${item.status === "played" || item.status === "skipped"
-          ? `<span class="tag done">${t(item.status === "skipped" ? "tag.skipped" : "tag.played")}</span>`
-          : ""}`;
-  const idx = index
-    ? `<span class="idx">${index}.</span>`
+  const chips = [
+    next ? `<span class="chip">${esc(t("tag.next"))}</span>` : "",
+    mine ? `<span class="chip chip--mine">${esc(t("tag.mine"))}</span>` : "",
+    item.status === "skipped" ? `<span class="chip chip--muted">${esc(t("tag.skipped"))}</span>` : "",
+  ].join("");
+  const action = withdraw && mine
+    ? `<button class="linkbtn" data-withdraw="${esc(item.id)}" title="${esc(t("index.withdraw_title"))}">${esc(t("index.withdraw"))}</button>`
     : "";
-  return `<div class="card ${now ? "now" : next ? "next" : ""}">
-    <div class="title">${idx}${tag}${label(item)}</div>
-    <div class="meta"><span>${esc(t("card.requested_by", { by: item.requested_by }))}</span><span>${item.duration_s ? fmtDur(item.duration_s) : ""}</span></div>
-    ${withdraw && mine ? `<div class="actions"><button class="mini" data-withdraw="${esc(item.id)}" title="${esc(t("index.withdraw_title"))}">${esc(t("index.withdraw"))}</button></div>` : ""}
+  return `<div class="track" data-track>
+    ${index ? `<span class="pos">${index}</span>` : ""}
+    <div class="tbody">
+      <div class="ttl">${label(item)}${chips ? `<span class="chips">${chips}</span>` : ""}</div>
+      <div class="sub">
+        <span class="by">${esc(t("card.requested_by", { by: item.requested_by }))}</span>
+        ${action}
+        <span class="dur">${item.duration_s ? fmtDur(item.duration_s) : ""}</span>
+      </div>
+    </div>
+  </div>`;
+}
+
+/* The live track is the page's biggest block and the only raised panel
+ * under "正在播放": one title at 18px, requester and duration beneath. */
+function nowPanel(item) {
+  const mine = !!item.requester_uid && item.requester_uid === UID;
+  return `<div class="panel now" data-track>
+    <div class="now-title">${label(item)}${mine ? `<span class="chips"><span class="chip chip--mine">${esc(t("tag.mine"))}</span></span>` : ""}</div>
+    <div class="now-meta">
+      <span>${esc(t("card.requested_by", { by: item.requested_by }))}</span>
+      <span class="dur">${item.duration_s ? fmtDur(item.duration_s) : ""}</span>
+    </div>
   </div>`;
 }
 
 let lastState = null;
-
 /* Fair rotation (admin toggle): while one of my own requests is playing or
    queued (matched by cookie uid), the submit button is greyed out and my
    nickname input is locked until that song has finished. */
@@ -251,18 +200,21 @@ function applyFairMode() {
 
 function render(state) {
   lastState = state;
-  $("queueCount").textContent = t("index.queue_count", { n: state.queue.length });
-  $("historyCount").textContent = state.history.length ? `(${state.history.length})` : "";
-  $("now").innerHTML = state.current ? card(state.current, { now: true }) : `<div class="empty">${t("empty.now")}</div>`;
+  const queueSeconds = state.queue.reduce((sum, item) => sum + (Number(item.duration_s) || 0), 0);
+  $("queueCount").textContent = state.queue.length ? t("index.queue_count", { n: state.queue.length }) : "";
+  $("queueTime").textContent = queueSeconds ? t("index.queue_time", { t: fmtDur(queueSeconds) }) : "";
+  $("historyCount").textContent = state.history.length ? String(state.history.length) : "";
+  $("now").innerHTML = state.current ? nowPanel(state.current) : `<div class="empty empty--now">${t("empty.now")}</div>`;
   $("queue").innerHTML = state.queue.length
-    ? state.queue.map((i, idx) => card(i, { next: idx === 0, withdraw: true })).join("")
+    ? `<div class="setlist">${state.queue.map((i, idx) => trackRow(i, { index: idx + 1, next: idx === 0, withdraw: true })).join("")}</div>`
     : `<div class="empty">${t("empty.queue")}</div>`;
   // History is stored newest-first on the server; display oldest-first so
   // index 1 is the first song ever played, newest at the bottom.
   $("history").innerHTML = state.history.length
-    ? [...state.history].reverse().map((item, idx) => card(item, { index: idx + 1 })).join("")
+    ? state.history.slice().reverse().map((item, idx) => trackRow(item, { index: idx + 1 })).join("")
     : `<div class="empty">${t("empty.history")}</div>`;
   applyFairMode();
+  enhanceMarquee();
 }
 
 /* Hash-based secondary view: #/history shows the played list, anything
@@ -281,7 +233,6 @@ $("f").addEventListener("submit", async (e) => {
   const input = $("input").value.trim();
   if (!input) return;
   $("btn").disabled = true;
-  msg.className = "msg";
   try {
     const res = await fetch("/api/submit", {
       method: "POST",
@@ -303,19 +254,17 @@ $("f").addEventListener("submit", async (e) => {
       // Render the fresh state right away so the fair-mode lock applies
       // before the next SSE frame lands.
       if (body.state) render(body.state);
-      msg.textContent = body.warning
-        ? t("msg.submitted_warning", { warning: body.warning })
-        : t("msg.submitted", { title: titleText(body.item) });
-      if (body.warning) msg.style.color = "#e0a33f";
-      else msg.style.removeProperty("color");
-      msg.classList.add(body.warning ? "" : "ok");
+      showToast(body.warning ? "warn" : "ok",
+        body.warning
+          ? t("msg.submitted_warning", { warning: body.warning })
+          : t("msg.submitted", { title: titleText(body.item) }));
       $("input").value = "";
       $("input").focus();
     } else {
-      msg.textContent = body.message || t("msg.submit_failed");
+      showToast("fail", body.message || t("msg.submit_failed"));
     }
   } catch (err) {
-    msg.textContent = t("msg.submit_error", { e: err.message || err });
+    showToast("fail", t("msg.submit_error", { e: err.message || err }));
   } finally {
     // Re-enable for the next submit; fair-mode lockout (if any) is
     // re-applied immediately from the latest known state.
@@ -331,7 +280,6 @@ $("f").addEventListener("submit", async (e) => {
 document.addEventListener("click", async (e) => {
   const id = e.target?.dataset?.withdraw;
   if (!id) return;
-  msg.className = "msg";
   try {
     const res = await fetch("/api/withdraw", {
       method: "POST",
@@ -341,13 +289,12 @@ document.addEventListener("click", async (e) => {
     const body = await res.json().catch(() => null);
     if (res.ok && body?.ok) {
       if (body.state) render(body.state);
-      msg.textContent = t("msg.withdrawn", { title: body.item.part || titleText(body.item) });
-      msg.classList.add("ok");
+      showToast("ok", t("msg.withdrawn", { title: body.item.part || titleText(body.item) }));
     } else {
-      msg.textContent = (body && body.message) || t("msg.withdraw_failed");
+      showToast("fail", (body && body.message) || t("msg.withdraw_failed"));
     }
   } catch (err) {
-    msg.textContent = t("msg.withdraw_error", { e: err.message || err });
+    showToast("fail", t("msg.withdraw_error", { e: err.message || err }));
   }
 });
 
@@ -356,77 +303,19 @@ async function refresh() {
   render(await res.json());
 }
 
-/* --- LAN access sidebar ----------------------------------------------
- * Shows how a phone joins the party: Wi-Fi name, LAN address and a QR
- * straight to this page. Filled lazily on first open; the QR encodes
- * the address the server saw this very client come in over. */
-const sidebar = $("sidebar");
-const sideOverlay = $("sideOverlay");
-let hostData = false; // false = never loaded, null = fetch failed
-
-function setSideOpen(open) {
-  sidebar.classList.toggle("open", open);
-  sideOverlay.hidden = !open;
-  sidebar.setAttribute("aria-hidden", String(!open));
-}
-
-$("sideBtn").addEventListener("click", () => {
-  setSideOpen(true);
-  loadHostInfo();
-});
-$("sideClose").addEventListener("click", () => setSideOpen(false));
-sideOverlay.addEventListener("click", () => setSideOpen(false));
-
-function renderHostInfo() {
-  if (hostData === false) return;
-  if (!hostData) {
-    $("ssidVal").textContent = t("side.unavailable");
-    $("ipVal").textContent = t("side.unavailable");
-    return;
-  }
-  const host = hostData;
-  let primary = host.primary ?? null;
-  if (!primary && Array.isArray(host.ips)) primary = host.ips[0] ?? null;
-  $("ssidVal").textContent = host.ssid ?? t("side.unavailable");
-  $("ipVal").textContent = primary ? `${primary}:${host.port}` : t("side.unavailable");
-}
-
-async function loadHostInfo() {
-  if (hostData !== false) {
-    renderHostInfo(); // a failure re-renders in the current language
-    return;
-  }
-  try {
-    hostData = (await (await fetch("/api/hostinfo")).json()).host ?? null;
-    if (hostData) {
-      let primary = hostData.primary ?? null;
-      if (!primary && Array.isArray(hostData.ips)) primary = hostData.ips[0] ?? null;
-      if (primary) {
-        const qr = qrcode(0, "M"); // EC M: survives camera glare and dents
-        qr.addData(`http://${primary}:${hostData.port}/`);
-        qr.make();
-        $("qrBox").innerHTML = qr.createSvgTag({ cellSize: 6, margin: 4, scalable: true });
-      }
-    }
-  } catch {
-    hostData = null;
-  }
-  renderHostInfo();
-}
+/* --- LAN access sidebar lives in ui/ui.js (shared with admin). ------- */
 
 /* Language switching re-renders the dynamic parts (cards, counts,
- * fair-mode lock) in the new language. */
+ * fair-mode lock, sidebar labels) in the new language. */
 setOnLangSwitch(() => {
   if (lastState) render(lastState);
-  $("sideBtn").setAttribute("aria-label", t("side.btn"));
-  $("sideClose").setAttribute("aria-label", t("side.close"));
-  renderHostInfo();
+  refreshSidebarI18n();
 });
 
 /* Boot sequence: resolve the language first, then talk to the server. */
 initI18n(() => {
-  $("sideBtn").setAttribute("aria-label", t("side.btn"));
-  $("sideClose").setAttribute("aria-label", t("side.close"));
+  initSidebar();
+  refreshSidebarI18n();
   refresh();
   const es = new EventSource("/api/events");
   es.addEventListener("state", (e) => render(JSON.parse(e.data)));

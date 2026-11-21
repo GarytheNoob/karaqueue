@@ -1,5 +1,5 @@
 /* Popup: configure the queue server address, control playback, and mirror
-   the card-based track display used by the song request page. */
+   the now/next state in the same setlist language as the server pages. */
 const DEFAULT_SERVER = "http://127.0.0.1:7777";
 const status = document.getElementById("status");
 
@@ -25,6 +25,42 @@ async function fetchJson(url, options = {}) {
   return data;
 }
 
+/* Action feedback is a dot + one line, like the server's toasts. */
+let statusTimer;
+function setStatus(text, tone = "") {
+  clearTimeout(statusTimer);
+  status.textContent = text;
+  status.className = "status" + (tone ? " " + tone : "");
+  if (tone === "ok") {
+    statusTimer = setTimeout(() => {
+      status.textContent = "";
+      status.className = "status";
+    }, 2500);
+  }
+}
+
+/* Host access: Chromium grants manifest host_permissions at install, so a
+   request() for an already-granted origin answers true with no prompt.
+   Firefox keeps host access revocable (and gates content script injection
+   on the same grants), so on Firefox we also cover the player sites; the
+   door hanger only appears when a grant is actually missing. */
+const SERVER_ORIGIN = "http://*/*";
+const SITE_ORIGINS = ["*://*.bilibili.com/*", "*://*.youtube.com/*", "*://youtu.be/*"];
+const isFirefox = chrome.runtime.getURL("").startsWith("moz-extension:");
+
+/** Ask for every origin this popup needs. Must be awaited within the click
+ * (transient user activation). Saves still happen on a refusal; the status
+ * just says access is missing. */
+async function ensureHostAccess() {
+  try {
+    return await chrome.permissions.request({
+      origins: [SERVER_ORIGIN, ...(isFirefox ? SITE_ORIGINS : [])],
+    });
+  } catch {
+    return false;
+  }
+}
+
 chrome.storage.sync.get({ serverUrl: DEFAULT_SERVER }).then(({ serverUrl }) => {
   document.getElementById("serverUrl").value = serverUrl;
 });
@@ -32,12 +68,17 @@ chrome.storage.sync.get({ serverUrl: DEFAULT_SERVER }).then(({ serverUrl }) => {
 document.getElementById("save").addEventListener("click", async () => {
   const url = document.getElementById("serverUrl").value.trim().replace(/\/+$/, "");
   if (!/^https?:\/\//.test(url)) {
-    status.textContent = "地址需要以 http:// 开头";
+    setStatus("地址需要以 http:// 开头", "fail");
     return;
   }
+  const granted = await ensureHostAccess();
   await chrome.storage.sync.set({ serverUrl: url });
-  status.textContent = "已保存 ✓";
-  setTimeout(() => (status.textContent = ""), 2000);
+  if (granted) {
+    setStatus("已保存", "ok");
+  } else {
+    setStatus("已保存，但未获得站点访问权限；再点一次保存重新授权，或在 about:addons 的插件权限里手动开启", "fail");
+  }
+  await refresh();
 });
 
 document.getElementById("open").addEventListener("click", () => {
@@ -50,20 +91,20 @@ document.getElementById("open").addEventListener("click", () => {
    reconcile immediately so the big screen switches without waiting for
    the periodic alarm. */
 document.getElementById("skip").addEventListener("click", async () => {
-  status.textContent = "跳过中…";
+  setStatus("跳过中…", "busy");
   try {
     const base = (await chrome.storage.sync.get({ serverUrl: DEFAULT_SERVER })).serverUrl.replace(/\/+$/, "");
     await fetchJson(`${base}/api/skip`, { method: "POST" });
     await chrome.runtime.sendMessage({ type: "OPEN_CURRENT" });
-    status.textContent = "已跳过 ✓";
+    setStatus("已跳过", "ok");
   } catch (err) {
-    status.textContent = "跳过失败: " + err.message;
+    setStatus("跳过失败：" + err.message, "fail");
   }
   await refresh();
 });
 
 /* ------------------------------------------------------------------ */
-/* Card rendering (same design as the request page)                    */
+/* Now / next rendering                                               */
 /* ------------------------------------------------------------------ */
 
 function esc(s) {
@@ -76,39 +117,58 @@ function fmtDur(s) {
   return `${m}:${String(r).padStart(2, "0")}`;
 }
 
-function card(item, { tag, tagClass, now }) {
-  const part = item.page_count > 1 ? ` · P${item.page}` : "";
-  // Titles without metadata arrive as a bare video id + `title_missing`;
-  // the popup copy stays Chinese (the popup itself has no switcher yet).
-  const title = String(item.title ?? "") + (item.title_missing ? "（元数据未获取）" : "");
-  return `<div class="card ${now ? "now" : tagClass ? tagClass : ""}">
-    <div class="title"><span class="tag ${tagClass}">${tag}</span>${esc(title)}${part ? ` <span style="color:#7ab">· P${item.page}</span>` : ""}</div>
-    <div class="meta"><span>点歌人：${esc(item.requested_by)}</span><span>${item.duration_s ? fmtDur(item.duration_s) : ""}</span></div>
+/* One line in the running order: title, requester, duration. */
+function titleOf(item) {
+  return String(item.title ?? "") + (item.title_missing ? "（元数据未获取）" : "");
+}
+
+function partOf(item) {
+  return item.page_count > 1 ? ` · P${item.page}` : "";
+}
+
+function nowCard(item) {
+  return `<div class="now-title">${esc(titleOf(item))}${partOf(item)}</div>
+    <div class="now-meta">
+      <span class="by">点歌人：${esc(item.requested_by)}</span>
+      <span class="dur">${item.duration_s ? fmtDur(item.duration_s) : ""}</span>
+    </div>`;
+}
+
+function nextRow(item) {
+  return `<div class="next-row">
+    <div class="next-main">
+      <div class="next-title">${esc(titleOf(item))}${partOf(item)}</div>
+      <div class="next-meta">点歌人：${esc(item.requested_by)}</div>
+    </div>
+    <span class="next-dur">${item.duration_s ? fmtDur(item.duration_s) : ""}</span>
   </div>`;
 }
 
-const empty = (text) => `<div class="empty">${text}</div>`;
+const emptyLine = (text) => `<p class="empty">${text}</p>`;
 
 async function refresh() {
   const now = document.getElementById("now");
   const next = document.getElementById("next");
+  const nextSec = document.getElementById("nextSec");
   let state;
   try {
     const base = (await chrome.storage.sync.get({ serverUrl: DEFAULT_SERVER })).serverUrl.replace(/\/+$/, "");
     state = await fetchJson(`${base}/api/state`);
   } catch (err) {
-    now.innerHTML = empty("无法连接队列服务：" + esc(err.message));
+    now.innerHTML = emptyLine(esc(err.message));
     next.innerHTML = "";
+    nextSec.hidden = true;
     return;
   }
 
   now.innerHTML = state.current
-    ? card(state.current, { tag: "NOW", tagClass: "", now: true })
-    : empty(`空闲中（队列剩 ${state.queue.length} 首；空闲时新提交的歌会自动开始播放）`);
+    ? nowCard(state.current)
+    : emptyLine(`空闲中（队列剩 ${state.queue.length} 首；空闲时新提交的歌会自动开始播放）`);
 
   const upNext = state.queue[0];
+  nextSec.hidden = !upNext && !state.current;
   next.innerHTML = upNext
-    ? card(upNext, { tag: "NEXT", tagClass: "upnext", now: false })
-    : state.current ? empty("队列空，播完这首就收工") : "";
+    ? nextRow(upNext)
+    : state.current ? emptyLine("队列空，播完这首就收工") : "";
 }
 refresh();

@@ -7,6 +7,8 @@
  *   GET  /api/state       -> full state snapshot
  *   GET  /api/hostinfo    -> LAN addresses + best-effort Wi-Fi SSID
  *                            (drives the request page's sidebar QR)
+ *   GET  /ui/ui.js        -> shared browser UI helpers (fixed name)
+ *   GET  /ui/theme.css    -> shared theme for both pages (fixed name)
  *   POST /api/submit      -> body { input, by, uid }; resolves input, enqueues it
  *                              (uid binds the request to the browser cookie
  *                              so fair-mode lockout survives nickname edits)
@@ -22,14 +24,16 @@
  *   GET  /                -> admin console (static/admin.html)
  *   GET  /i18n/<lang>.json -> UI strings for the page language switcher
  *                             (files under static/i18n/; public port too,
- *                             /i18n/i18n.js is the shared core script)
+ *                             /i18n/i18n.js is the shared core script;
+ *                             /ui/theme.css, /ui/ui.js are shared)
  *   GET  /api/state       -> full state snapshot
  *   GET  /api/events      -> SSE stream
  *   GET  /api/config      -> { config }
  *   POST /api/config      -> { allowQueuedDuplicates, oneSongPerGuest: boolean }
  *   POST /api/skip        -> skip the current track
  *   POST /api/delete      -> { id }; remove a queued track
- *   POST /api/reorder     -> { id, direction: "up"|"down" }
+ *   POST /api/reorder     -> { id, direction: "up"|"down" } or
+ *                            { id, index: absolute 0-based slot }
  *
  * Persistence: server/queue.json (in-memory state, written atomically).
  * User-facing server strings (submit errors, warnings) are translated
@@ -75,8 +79,10 @@ const sseClients = new Set();
 // Overrides let integration tests point the resolver at a local mock.
 const VIEW_API = process.env.KARAQUEUE_VIEW_API || "https://api.bilibili.com/x/web-interface/view";
 const SPI_API = process.env.KARAQUEUE_SPI_API || "https://api.bilibili.com/x/frontend/finger/spi";
-// Keyless, official: title/author/thumb only, no duration.
+// Keyless, official: title/author/thumb. The duration lives in the watch
+// page's player response, so a second best-effort fetch fills it in.
 const OEMBED_API = process.env.KARAQUEUE_OEMBED_API || "https://www.youtube.com/oembed";
+const YT_WATCH_PAGE = process.env.KARAQUEUE_YT_WATCH_PAGE || "https://www.youtube.com/watch";
 const META_CACHE_FILE = path.join(ROOT, "meta-cache.json");
 const META_CACHE_TTL_MS = 24 * 3600 * 1000;
 const META_CACHE_LIMIT = 300;
@@ -214,7 +220,7 @@ function rememberView(parsed, view) {
   saveMetaCache();
 }
 
-/** Persist the trimmed YouTube oEmbed payload under a `yt:` prefixed key. */
+/** Persist the trimmed YouTube metadata under a `yt:` prefixed key. */
 function rememberYouTubeMeta(videoId, meta) {
   metaCache.set(`yt:${videoId}`, {
     t: Date.now(),
@@ -222,6 +228,7 @@ function rememberYouTubeMeta(videoId, meta) {
       title: meta.title ?? "",
       author_name: meta.author_name ?? "",
       thumbnail_url: meta.thumbnail_url ?? "",
+      duration_s: Number(meta.duration_s ?? 0),
     },
   });
   saveMetaCache();
@@ -854,6 +861,42 @@ async function fetchYouTubeMeta(videoId) {
   return JSON.parse(out.text);
 }
 
+/** Pull the duration in seconds out of a YouTube watch page. The player
+ *  response's "lengthSeconds" is authoritative; the itemprop meta tag is
+ *  a fallback for pages served without it. Returns 0 when neither is
+ *  present (live streams, consent/bot walls). */
+function parseYouTubeDuration(html) {
+  const seconds = html.match(/"lengthSeconds"\s*:\s*"?(\d+)"?/);
+  if (seconds) return Number(seconds[1]);
+
+  const iso = html.match(/itemprop="duration"\s+content="([^"]+)"/);
+  if (!iso) return 0;
+  const m = iso[1].match(/^PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?$/);
+  if (!m) return 0;
+  return Number(m[1] ?? 0) * 3600 + Number(m[2] ?? 0) * 60 + Number(m[3] ?? 0);
+}
+
+/** Best-effort duration lookup: oEmbed carries no duration, so read the
+ *  watch page. Failures are not fatal - the item queues without one. */
+async function fetchYouTubeDuration(videoId) {
+  try {
+    const out = await httpGet(
+      `${YT_WATCH_PAGE}?v=${encodeURIComponent(videoId)}&hl=en`,
+      {
+        "User-Agent": BROWSER_UA,
+        Accept: "text/html,application/xhtml+xml,*/*",
+        "Accept-Language": "en-US,en;q=0.9",
+      },
+      12000,
+    );
+    if (out.status !== 200) return 0;
+    return parseYouTubeDuration(out.text);
+  } catch (err) {
+    console.warn(`[karaqueue] youtube duration fetch failed (${videoId}):`, err.message);
+    return 0;
+  }
+}
+
 /**
  * Resolve YouTube metadata with the same cache/degrade ladder as
  * bilibili: fresh cache -> no network; stale cache -> degraded warning;
@@ -863,14 +906,20 @@ async function resolveYouTubeMeta(videoId) {
   const key = `yt:${videoId}`;
   const cached = metaCache.get(key);
 
-  if (cached?.meta && Date.now() - cached.t < META_CACHE_TTL_MS) {
+  // Entries written before duration support lack the field; treat them
+  // as stale so the next submission backfills it.
+  if (cached?.meta && cached.meta.duration_s !== undefined && Date.now() - cached.t < META_CACHE_TTL_MS) {
     return { meta: cached.meta, warning: null };
   }
 
   try {
-    const meta = await fetchYouTubeMeta(videoId);
-    rememberYouTubeMeta(videoId, meta);
-    return { meta, warning: null };
+    const [meta, duration] = await Promise.all([
+      fetchYouTubeMeta(videoId),
+      fetchYouTubeDuration(videoId),
+    ]);
+    const full = { ...meta, duration_s: duration };
+    rememberYouTubeMeta(videoId, full);
+    return { meta: full, warning: null };
   } catch (err) {
     console.warn(`[karaqueue] youtube metadata fetch failed (${videoId}):`, err.message);
     // The video itself is gone: reject the submission outright.
@@ -886,8 +935,7 @@ async function resolveYouTubeMeta(videoId) {
   }
 }
 
-/** Build the YouTube queue item; runtime details come from the player,
- * since oEmbed has no duration and YouTube has no numbered pages. */
+/** Build the YouTube queue item; YouTube has no numbered pages. */
 function makeYouTubeItem(videoId, meta, requestedBy) {
   return {
     id: `${videoId}:p1`,
@@ -899,7 +947,7 @@ function makeYouTubeItem(videoId, meta, requestedBy) {
     title_missing: !(meta?.title),
     part: "",
     uploader: meta?.author_name ?? "",
-    duration_s: 0,
+    duration_s: meta?.duration_s ?? 0,
     thumbnail: meta?.thumbnail_url ?? "",
     web_url: `https://www.youtube.com/watch?v=${videoId}`,
     requested_by: requestedBy || "anonymous",
@@ -1017,6 +1065,21 @@ function reorderQueued(id, direction) {
   const target = direction === "up" ? idx - 1 : direction === "top" ? 0 : idx + 1;
   if (target < 0) return { ok: false, code: "srv.reorder_at_top" };
   if (target >= state.queue.length) return { ok: false, code: "srv.reorder_at_bottom" };
+  const [item] = state.queue.splice(idx, 1);
+  state.queue.splice(target, 0, item);
+  state.revision += 1;
+  saveState();
+  broadcast();
+  return { ok: true };
+}
+
+/** Drop a queued item onto an absolute slot (drag & drop, admin). The
+ *  index is clamped into the queue, so the client never has to guess. */
+function reorderQueuedTo(id, index) {
+  const idx = state.queue.findIndex((i) => i.id === id);
+  if (idx < 0) return { ok: false, code: "srv.reorder_not_in_queue" };
+  const target = Math.max(0, Math.min(state.queue.length - 1, Number(index)));
+  if (target === idx) return { ok: true }; // dropped in place
   const [item] = state.queue.splice(idx, 1);
   state.queue.splice(target, 0, item);
   state.revision += 1;
@@ -1298,14 +1361,20 @@ async function route(req, res, isAdmin = false) {
     return sendJson(res, 200, { ok: true, host: { ...lanHostInfo(), primary: primaryLanIp(req) } });
   }
 
-  // Vendored browser libs (no npm). Fixed file names only - the route
-  // never interpolates the pathname, so there is no traversal surface.
-  if (req.method === "GET" && pathname === "/vendor/qrcode.js") {
+  // Vendored browser libs and the shared UI script (no npm). Fixed
+  // file names only - the route never interpolates the pathname, so
+  // there is no traversal surface.
+  if (req.method === "GET" && (pathname === "/vendor/qrcode.js" || pathname === "/ui/ui.js" || pathname === "/ui/theme.css")) {
+    const [rel, type] = pathname === "/vendor/qrcode.js"
+      ? ["vendor/qrcode.js", "text/javascript; charset=utf-8"]
+      : pathname === "/ui/theme.css"
+        ? [path.join("ui", "theme.css"), "text/css; charset=utf-8"]
+        : [path.join("ui", "ui.js"), "text/javascript; charset=utf-8"];
     try {
-      res.writeHead(200, { "Content-Type": "text/javascript; charset=utf-8" });
-      res.end(fs.readFileSync(path.join(STATIC_DIR, "vendor", "qrcode.js")));
+      res.writeHead(200, { "Content-Type": type });
+      res.end(fs.readFileSync(path.join(STATIC_DIR, rel)));
     } catch {
-      sendJson(res, 404, { ok: false, message: "no vendor script qrcode.js" });
+      sendJson(res, 404, { ok: false, message: `no such static file: ${pathname}` });
     }
     return;
   }
@@ -1396,6 +1465,29 @@ async function routeAdmin(req, res, url, pathname) {
   const langMatch = req.method === "GET" && pathname.match(I18N_PATH_RE);
   if (langMatch) return serveI18n(res, langMatch[1], langMatch[2]);
 
+  // Same hostinfo the request page uses: the admin drawer's QR points
+  // guests at the request page on the public port.
+  if (req.method === "GET" && pathname === "/api/hostinfo") {
+    return sendJson(res, 200, { ok: true, host: { ...lanHostInfo(), primary: primaryLanIp(req) } });
+  }
+
+  // Shared theme, UI script and the QR vendor lib, same fixed-name
+  // contract as the public port's /ui/ and /vendor/ routes.
+  if (req.method === "GET" && (pathname === "/ui/ui.js" || pathname === "/vendor/qrcode.js" || pathname === "/ui/theme.css")) {
+    const [rel, type] = pathname === "/vendor/qrcode.js"
+      ? ["vendor/qrcode.js", "text/javascript; charset=utf-8"]
+      : pathname === "/ui/theme.css"
+        ? [path.join("ui", "theme.css"), "text/css; charset=utf-8"]
+        : [path.join("ui", "ui.js"), "text/javascript; charset=utf-8"];
+    try {
+      res.writeHead(200, { "Content-Type": type });
+      res.end(fs.readFileSync(path.join(STATIC_DIR, rel)));
+    } catch {
+      sendJson(res, 404, { ok: false, message: `no such static file: ${pathname}` });
+    }
+    return;
+  }
+
   if (req.method === "GET" && pathname === "/api/state") {
     return sendJson(res, 200, publicState());
   }
@@ -1443,11 +1535,19 @@ async function routeAdmin(req, res, url, pathname) {
 
   if (req.method === "POST" && pathname === "/api/reorder") {
     const body = await readJsonBody(req);
-    const direction = ["up", "down", "top"].includes(body.direction) ? body.direction : null;
-    if (!direction) {
-      return sendJson(res, 400, { ok: false, message: 'direction must be "up", "down" or "top"' });
+    let result;
+    if (body.index !== undefined) {
+      if (!Number.isInteger(body.index)) {
+        return sendJson(res, 400, { ok: false, message: "index must be an integer when given" });
+      }
+      result = reorderQueuedTo(String(body.id ?? ""), body.index);
+    } else {
+      const direction = ["up", "down", "top"].includes(body.direction) ? body.direction : null;
+      if (!direction) {
+        return sendJson(res, 400, { ok: false, message: 'direction must be "up", "down" or "top" (or pass an integer index)' });
+      }
+      result = reorderQueued(String(body.id ?? ""), direction);
     }
-    const result = reorderQueued(String(body.id ?? ""), direction);
     if (!result.ok) {
       return sendJson(res, 404, {
         ...result,

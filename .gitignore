@@ -8,6 +8,9 @@ server/meta-cache.json
 # Node (in case of future tooling)
 node_modules/
 
+# Local design-review artifacts (screenshots, notes, critiques)
+.taste-skill/
+
 # Locally installed third-party agent skills (not committed)
 .opencode/skills/style-review/
 .opencode/skills/zh-tech-writing/
