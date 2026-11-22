@@ -22,6 +22,26 @@
   const log = (...a) => console.debug("[karaqueue]", ...a);
 
   let boundVideo = null;
+  let reportedDuration = "";
+
+  /**
+   * Report the player's real duration to the server. This is the most
+   * reliable source: it comes from the browser that can actually play the
+   * video, so it also works when YouTube bot-walls the server's metadata
+   * requests. Deduplicated per URL+duration; ads are skipped.
+   */
+  function reportDuration(video) {
+    if (video !== boundVideo) return;
+    if (isYouTube && document.querySelector("#movie_player.ad-showing, .html5-video-player.ad-showing")) return;
+    const seconds = Math.round(video.duration);
+    if (!Number.isFinite(seconds) || seconds <= 0 || seconds > 24 * 3600) return;
+    const key = `${location.href}|${seconds}`;
+    if (key === reportedDuration) return;
+    reportedDuration = key;
+    chrome.runtime
+      .sendMessage({ type: "VIDEO_DURATION", href: location.href, duration: seconds })
+      .catch(() => {});
+  }
 
   /**
    * Tell the worker a video finished and wait for its ack. The worker
@@ -73,8 +93,13 @@
     const video = document.querySelector("#movie_player video") ?? document.querySelector("video");
     if (!video || video === boundVideo) return;
     boundVideo = video;
+    reportedDuration = "";
     video.addEventListener("ended", onEnded);
+    video.addEventListener("loadedmetadata", () => reportDuration(video));
+    video.addEventListener("durationchange", () => reportDuration(video));
+    video.addEventListener("playing", () => reportDuration(video));
     tryAutoPlay(video);
+    if (video.readyState >= 1) reportDuration(video);
     log("video bound:", video.currentSrc ? video.currentSrc.slice(0, 60) : "(no src yet)");
   }
 

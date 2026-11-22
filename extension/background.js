@@ -172,6 +172,20 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       });
     return true; // keep the channel open for the async ack
   }
+  if (msg?.type === "VIDEO_DURATION") {
+    // The content script read `video.duration` from the real player. Relay
+    // it so the server can fill a duration its own requests could not get
+    // (YouTube sometimes bot-walls the server's watch-page fetch).
+    const id = msg.href ? trackIdentity(msg.href) : null;
+    const duration = Number(msg.duration);
+    if (id && Number.isFinite(duration) && duration > 0) {
+      api("/api/duration", {
+        method: "POST",
+        body: JSON.stringify({ id, duration_s: duration }),
+      }).catch((e) => console.warn("[karaqueue] duration report failed:", e.message));
+    }
+    return false;
+  }
   if (msg?.type === "OPEN_CURRENT") reconcile(null);
   return false;
 });
