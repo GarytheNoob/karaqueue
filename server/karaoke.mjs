@@ -12,6 +12,8 @@
  *   POST /api/submit      -> body { input, by, uid }; resolves input, enqueues it
  *                              (uid binds the request to the browser cookie
  *                              so fair-mode lockout survives nickname edits)
+ *   POST /api/duration    -> { id, duration_s }; the extension reports the
+ *                              player's real duration for a stored item
  *
  *   POST /api/advance     -> mark current as played, promote the next item
  *   POST /api/skip        -> mark current as skipped, promote the next item
@@ -83,6 +85,17 @@ const SPI_API = process.env.KARAQUEUE_SPI_API || "https://api.bilibili.com/x/fro
 // page's player response, so a second best-effort fetch fills it in.
 const OEMBED_API = process.env.KARAQUEUE_OEMBED_API || "https://www.youtube.com/oembed";
 const YT_WATCH_PAGE = process.env.KARAQUEUE_YT_WATCH_PAGE || "https://www.youtube.com/watch";
+// The watch page can answer with a "confirm you're not a bot" wall, while
+// the same player metadata is still available from the keyless InnerTube
+// player endpoint. Prefer it for durations; the page stays as fallback.
+const YT_PLAYER_API =
+  process.env.KARAQUEUE_YT_PLAYER_API || "https://www.youtube.com/youtubei/v1/player?prettyPrint=false";
+const YT_WEB_CLIENT = {
+  clientName: "WEB",
+  clientVersion: "2.20241126.01.00",
+  hl: "en",
+  gl: "US",
+};
 const META_CACHE_FILE = path.join(ROOT, "meta-cache.json");
 const META_CACHE_TTL_MS = 24 * 3600 * 1000;
 const META_CACHE_LIMIT = 300;
@@ -220,16 +233,20 @@ function rememberView(parsed, view) {
   saveMetaCache();
 }
 
-/** Persist the trimmed YouTube metadata under a `yt:` prefixed key. */
+/** Persist the trimmed YouTube metadata under a `yt:` prefixed key. A zero
+ * duration means "unknown" (bot wall, live stream): leave the field out so
+ * the next submission retries instead of trusting a cached zero. */
 function rememberYouTubeMeta(videoId, meta) {
+  const duration = Number(meta.duration_s ?? 0);
+  const trimmed = {
+    title: meta.title ?? "",
+    author_name: meta.author_name ?? "",
+    thumbnail_url: meta.thumbnail_url ?? "",
+  };
+  if (duration > 0) trimmed.duration_s = duration;
   metaCache.set(`yt:${videoId}`, {
     t: Date.now(),
-    meta: {
-      title: meta.title ?? "",
-      author_name: meta.author_name ?? "",
-      thumbnail_url: meta.thumbnail_url ?? "",
-      duration_s: Number(meta.duration_s ?? 0),
-    },
+    meta: trimmed,
   });
   saveMetaCache();
 }
@@ -409,12 +426,13 @@ function shouldProxy(url) {
   return true;
 }
 
-/** One HTTPS GET through the current HTTP proxy: CONNECT the tunnel, wrap
- * the socket in TLS, send a plain GET with Connection: close, read one
- * full response and parse it. */
-function httpsGetViaProxy(urlString, headers, timeoutMs) {
+/** One HTTPS request through the current HTTP proxy: CONNECT the tunnel,
+ * wrap the socket in TLS, send the request with Connection: close, read
+ * one full response and parse it. Body, when present, is sent as UTF-8. */
+function httpsRequestViaProxy(urlString, method, headers, body, timeoutMs) {
   return new Promise((resolve, reject) => {
     const u = new URL(urlString);
+    const payload = body == null ? null : Buffer.from(String(body), "utf8");
     const target = `${u.hostname}:${u.port || 443}`;
     const sock = net.connect({ host: activeProxy.host, port: activeProxy.port }, () => {
       // Ask the proxy to punch the tunnel first.
@@ -440,13 +458,18 @@ function httpsGetViaProxy(urlString, headers, timeoutMs) {
       const status = head.slice(0, head.indexOf("\r\n"));
       if (!/^HTTP\/1\.[01] 200/.test(status)) return fail(`CONNECT refused: ${status}`);
 
-      // Stage 2: TLS inside the tunnel, then a plain GET.
+      // Stage 2: TLS inside the tunnel, then the request itself.
       tlsSocket = tls.connect({ socket: sock, servername: u.hostname }, () => {
-        const lines = Object.entries({ Host: u.hostname, Connection: "close", ...headers })
-          .map(([k, v]) => `${k}: ${v}`);
-        tlsSocket.write(`GET ${u.pathname}${u.search} HTTP/1.1\r\n${lines.join("\r\n")}\r\n\r\n`);
+        const lines = Object.entries({
+          Host: u.hostname,
+          Connection: "close",
+          ...(payload ? { "Content-Length": payload.length } : {}),
+          ...headers,
+        }).map(([k, v]) => `${k}: ${v}`);
+        tlsSocket.write(`${method} ${u.pathname}${u.search} HTTP/1.1\r\n${lines.join("\r\n")}\r\n\r\n`);
+        if (payload) tlsSocket.write(payload);
       });
-      tlsSocket.on("error", (e) => fail(`TLS/GET failed: ${e.message}`));
+      tlsSocket.on("error", (e) => fail(`TLS/request failed: ${e.message}`));
       const chunks = [];
       tlsSocket.on("data", (c) => chunks.push(c));
       tlsSocket.on("close", () => {
@@ -500,8 +523,20 @@ function deChunk(body) {
 /** GET one URL. Public hosts tunnel through the proxy when there is one;
  * localhost and LAN targets always use plain fetch. */
 async function httpGet(url, headers, timeoutMs) {
-  if (shouldProxy(url)) return httpsGetViaProxy(url, headers, timeoutMs);
+  if (shouldProxy(url)) return httpsRequestViaProxy(url, "GET", headers, null, timeoutMs);
   const res = await fetch(url, { headers, signal: AbortSignal.timeout(timeoutMs) });
+  return { status: res.status, contentType: res.headers.get("content-type") ?? "", text: await res.text() };
+}
+
+/** POST a JSON/text body with the same proxy rules as httpGet. */
+async function httpPost(url, headers, body, timeoutMs) {
+  if (shouldProxy(url)) return httpsRequestViaProxy(url, "POST", headers, body, timeoutMs);
+  const res = await fetch(url, {
+    method: "POST",
+    headers,
+    body,
+    signal: AbortSignal.timeout(timeoutMs),
+  });
   return { status: res.status, contentType: res.headers.get("content-type") ?? "", text: await res.text() };
 }
 
@@ -876,9 +911,40 @@ function parseYouTubeDuration(html) {
   return Number(m[1] ?? 0) * 3600 + Number(m[2] ?? 0) * 60 + Number(m[3] ?? 0);
 }
 
-/** Best-effort duration lookup: oEmbed carries no duration, so read the
- *  watch page. Failures are not fatal - the item queues without one. */
+/** Read videoDetails.lengthSeconds from the InnerTube player response. The
+ *  endpoint returns metadata even when playback itself is refused, so this
+ *  survives the watch page's "confirm you're not a bot" wall. */
+async function fetchYouTubeDurationViaPlayer(videoId) {
+  const out = await httpPost(
+    YT_PLAYER_API,
+    {
+      "Content-Type": "application/json",
+      "User-Agent": BROWSER_UA,
+      Accept: "application/json",
+      "Accept-Language": "en-US,en;q=0.9",
+      Origin: "https://www.youtube.com",
+      Referer: `https://www.youtube.com/watch?v=${videoId}`,
+    },
+    JSON.stringify({ context: { client: YT_WEB_CLIENT }, videoId }),
+    12000,
+  );
+  if (out.status !== 200 || !out.contentType.includes("json")) return 0;
+  const details = JSON.parse(out.text)?.videoDetails;
+  const seconds = Number(details?.lengthSeconds);
+  return Number.isFinite(seconds) && seconds > 0 ? Math.round(seconds) : 0;
+}
+
+/** Best-effort duration lookup: oEmbed carries no duration, so ask the
+ *  player endpoint first and fall back to the watch page. Failures are not
+ *  fatal - the item queues without one and retries on a later submission. */
 async function fetchYouTubeDuration(videoId) {
+  try {
+    const fromPlayer = await fetchYouTubeDurationViaPlayer(videoId);
+    if (fromPlayer > 0) return fromPlayer;
+  } catch (err) {
+    console.warn(`[karaqueue] youtube player duration failed (${videoId}):`, err.message);
+  }
+
   try {
     const out = await httpGet(
       `${YT_WATCH_PAGE}?v=${encodeURIComponent(videoId)}&hl=en`,
@@ -892,7 +958,7 @@ async function fetchYouTubeDuration(videoId) {
     if (out.status !== 200) return 0;
     return parseYouTubeDuration(out.text);
   } catch (err) {
-    console.warn(`[karaqueue] youtube duration fetch failed (${videoId}):`, err.message);
+    console.warn(`[karaqueue] youtube watch-page duration failed (${videoId}):`, err.message);
     return 0;
   }
 }
@@ -906,9 +972,9 @@ async function resolveYouTubeMeta(videoId) {
   const key = `yt:${videoId}`;
   const cached = metaCache.get(key);
 
-  // Entries written before duration support lack the field; treat them
-  // as stale so the next submission backfills it.
-  if (cached?.meta && cached.meta.duration_s !== undefined && Date.now() - cached.t < META_CACHE_TTL_MS) {
+  // Only a positive duration counts as complete: entries written before
+  // duration support, and zeroes cached during a bot wall, are retried.
+  if (cached?.meta && Number(cached.meta.duration_s) > 0 && Date.now() - cached.t < META_CACHE_TTL_MS) {
     return { meta: cached.meta, warning: null };
   }
 
@@ -1140,6 +1206,99 @@ function reRequest(id, by) {
   // the re-requested track immediately.
   promoteNextIfIdle();
   return { ok: true, item };
+}
+
+/* ------------------------------------------------------------------ */
+/* Duration repair                                                     */
+/* ------------------------------------------------------------------ */
+
+/** Copy a positive YouTube duration onto every stored item for that video
+ *  and onto its metadata cache entry. Returns which stores changed so the
+ *  caller can persist and broadcast once. */
+function applyYouTubeDuration(videoId, duration) {
+  const seconds = Math.round(Number(duration));
+  if (!Number.isFinite(seconds) || seconds <= 0 || seconds > 24 * 3600) {
+    return { itemsChanged: false, cacheChanged: false };
+  }
+  let itemsChanged = false;
+  for (const item of [state.current, ...state.queue, ...state.history]) {
+    if (item?.platform === "youtube" && item.video_id === videoId && Number(item.duration_s) !== seconds) {
+      item.duration_s = seconds;
+      itemsChanged = true;
+    }
+  }
+  let cacheChanged = false;
+  const cached = metaCache.get(`yt:${videoId}`);
+  if (cached?.meta && Number(cached.meta.duration_s) !== seconds) {
+    cached.meta.duration_s = seconds;
+    cached.t = Date.now();
+    cacheChanged = true;
+  }
+  return { itemsChanged, cacheChanged };
+}
+
+/** Set a duration reported by the browser player (authoritative, and the
+ *  last resort when the server cannot reach YouTube). Returns the item, or
+ *  null when the id is unknown or the value is implausible. */
+function setTrackDuration(id, duration) {
+  const item = [state.current, ...state.queue, ...state.history].find((i) => i?.id === id);
+  if (!item) return null;
+  const seconds = Math.round(Number(duration));
+  if (!Number.isFinite(seconds) || seconds <= 0 || seconds > 24 * 3600) return null;
+
+  if (Number(item.duration_s) === seconds) return item;
+  item.duration_s = seconds;
+  if (item.platform === "youtube") {
+    const { cacheChanged } = applyYouTubeDuration(item.video_id, seconds);
+    if (cacheChanged) saveMetaCache();
+  }
+  state.revision += 1;
+  saveState();
+  broadcast();
+  return item;
+}
+
+/** One-shot repair for queues created before duration support (or while
+ *  YouTube was bot-walling the server): fill every missing YouTube duration
+ *  in the current item, queue and history (plus their cache entries), then
+ *  broadcast once. Runs after listen so startup is never blocked by network
+ *  calls. */
+async function backfillYouTubeDurations() {
+  const ids = new Set();
+  for (const item of [state.current, ...state.queue, ...state.history]) {
+    if (item?.platform === "youtube" && !(Number(item.duration_s) > 0)) ids.add(item.video_id);
+  }
+  if (!ids.size) return;
+
+  console.log(`[karaqueue] backfilling ${ids.size} YouTube duration(s)`);
+  let itemsChanged = false;
+  let cacheChanged = false;
+  let filled = 0;
+  let misses = 0;
+  for (const id of ids) {
+    const duration = await fetchYouTubeDuration(id);
+    if (duration > 0) {
+      const result = applyYouTubeDuration(id, duration);
+      itemsChanged ||= result.itemsChanged;
+      cacheChanged ||= result.cacheChanged;
+      filled += 1;
+      misses = 0;
+    } else if (++misses >= 3) {
+      // A run of misses usually means YouTube is unreachable or blocked;
+      // stop instead of waiting out a timeout for every old entry.
+      console.warn("[karaqueue] duration backfill stopped after 3 consecutive misses");
+      break;
+    }
+    // Keep the repair gentle: this is a background job, not a crawl.
+    await new Promise((resolve) => setTimeout(resolve, 120));
+  }
+  if (cacheChanged) saveMetaCache();
+  if (itemsChanged) {
+    state.revision += 1;
+    saveState();
+    broadcast();
+  }
+  console.log(`[karaqueue] backfilled ${filled}/${ids.size} YouTube duration(s)`);
 }
 
 /* ------------------------------------------------------------------ */
@@ -1438,6 +1597,15 @@ async function route(req, res, isAdmin = false) {
     }
   }
 
+  if (req.method === "POST" && pathname === "/api/duration") {
+    const body = await readJsonBody(req);
+    const item = setTrackDuration(String(body.id ?? ""), body.duration_s);
+    // The extension reports every video it plays, including ones the user
+    // opened outside the queue; an unknown id is expected, not an error.
+    if (!item) return sendJson(res, 200, { ok: false, ignored: true });
+    return sendJson(res, 200, { ok: true, item });
+  }
+
   if (req.method === "POST" && pathname === "/api/withdraw") {
     const body = await readJsonBody(req);
     const result = withdrawQueued(String(body.id ?? ""), String(body.uid ?? ""));
@@ -1627,3 +1795,12 @@ http
   .listen(ADMIN_PORT, HOST, () => {
     console.log(`[karaqueue] admin console on http://${HOST}:${ADMIN_PORT}`);
   });
+
+// Queues from before duration support, or from a bot-walled period, get
+// their missing YouTube durations filled in the background. Delayed one
+// tick so the listen logs land first.
+setTimeout(() => {
+  backfillYouTubeDurations().catch((err) => {
+    console.warn("[karaqueue] duration backfill failed:", err.message);
+  });
+}, 1000);

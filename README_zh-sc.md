@@ -36,7 +36,7 @@
 - **三语界面**（英 / 简 / 繁），页头切换；服务端生成的提示跟随页面所选语言。
 - **Chromium 与 Firefox。** 一份 MV3 插件两端通跑：Chromium 用 service worker 跑后台，Firefox 用 event page。
 
-关于元数据：B 站高负载时会限流元数据接口（常见 HTTP 412），但点歌不会失败——服务端有 24 小时缓存，接着会改抓视频网页解析 `window.__INITIAL_STATE__`；只有视频 ID 本身无效（code -400/-404）才拒绝提交。YouTube 元数据走官方免 key 的 oEmbed 接口（标题、作者、缩略图），时长再从视频网页补抓一次；抓不到就不显示时长。两路都拿不到元数据时（已删除、地区受限，或网络到不了），曲目按纯链接入队，照样能播，标注"元数据未获取"。
+关于元数据：B 站高负载时会限流元数据接口（常见 HTTP 412），但点歌不会失败——服务端有 24 小时缓存，接着会改抓视频网页解析 `window.__INITIAL_STATE__`；只有视频 ID 本身无效（code -400/-404）才拒绝提交。YouTube 元数据走官方免 key 的 oEmbed 接口（标题、作者、缩略图）；时长先问免 key 的播放器接口，再退回视频网页，插件也会在开始播放后上报播放器真实的 `video.duration`。抓不到的时长不会按 0 缓存，服务端启动时还会自动回填旧队列和历史里的缺失时长。两路都拿不到元数据时（已删除、地区受限，或网络到不了），曲目按纯链接入队，照样能播，标注"元数据未获取"。
 
 ## 构建与安装
 
@@ -56,7 +56,7 @@ node server/karaoke.mjs            # 默认监听 0.0.0.0:7777，管理后台 0.
 |---|---|
 | `PORT` / `HOST` | 点歌页端口（默认 7777）/ 绑定地址 |
 | `ADMIN_PORT` | 管理后台端口，默认 7778 |
-| `KARAQUEUE_VIEW_API` / `KARAQUEUE_SPI_API` | 覆盖 B 站接口地址（测试用）；`KARAQUEUE_OEMBED_API` 同理覆盖 YouTube |
+| `KARAQUEUE_VIEW_API` / `KARAQUEUE_SPI_API` | 覆盖 B 站接口地址（测试用）；`KARAQUEUE_OEMBED_API` / `KARAQUEUE_YT_PLAYER_API` / `KARAQUEUE_YT_WATCH_PAGE` 同理覆盖 YouTube |
 | `KARAQUEUE_PROXY` | 跨网请求强制走代理，写法 `host:port` 或 `http://host:port`。不设时读 `HTTPS_PROXY`，再退回 macOS 系统代理。只对公网目标生效；本机、局域网和 B 站一律直连 |
 
 ### 浏览器插件
@@ -150,7 +150,7 @@ node server/karaoke.mjs            # 默认监听 0.0.0.0:7777，管理后台 0.
 
 调试用，全部 JSON：
 
-- 公共：`GET /`、`GET /api/state`、`GET /api/events`（SSE）；`POST /api/submit` `{input, by, uid}`、`POST /api/withdraw` `{id, uid}`、`POST /api/advance`、`POST /api/skip`
+- 公共：`GET /`、`GET /api/state`、`GET /api/events`（SSE）；`POST /api/submit` `{input, by, uid}`、`POST /api/duration` `{id, duration_s}`（插件上报时长）、`POST /api/withdraw` `{id, uid}`、`POST /api/advance`、`POST /api/skip`
 - 管理端口（7778）：另有 `GET /api/config`、`POST /api/config` `{allowQueuedDuplicates, oneSongPerGuest}`、`POST /api/delete` `{id}`、`POST /api/reorder` `{id, direction: up|down|top}` 或 `{id, index: 从0开始的落位}`、`POST /api/rerequest` `{id}`
 
 ### 状态与复位

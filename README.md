@@ -36,7 +36,7 @@ A LAN karaoke queue machine. Guests submit bilibili or YouTube videos from their
 - **Three interface languages** (English / Simplified / Traditional) with a header switcher; server-generated messages follow the chosen page language.
 - **Chromium and Firefox.** One Manifest V3 extension for both: Chromium runs the background as a service worker, Firefox as an event page.
 
-About metadata: bilibili throttles its metadata API under load (often HTTP 412), but a submission still succeeds — the server keeps a 24-hour cache, then falls back to parsing the video page's `window.__INITIAL_STATE__`, and only an invalid video id (codes -400/-404) is rejected. YouTube metadata comes from the official keyless oEmbed endpoint (title, author, thumbnail); a best-effort watch-page fetch adds the duration. When nothing can be fetched — deleted or region-locked videos, or a network that cannot reach either service — the track queues link-only and still plays, marked "metadata missing".
+About metadata: bilibili throttles its metadata API under load (often HTTP 412), but a submission still succeeds — the server keeps a 24-hour cache, then falls back to parsing the video page's `window.__INITIAL_STATE__`, and only an invalid video id (codes -400/-404) is rejected. YouTube metadata comes from the official keyless oEmbed endpoint (title, author, thumbnail); the duration comes from the keyless player endpoint, falling back to the watch page, and the extension also reports the player's real `video.duration` once playback starts. A missing duration is never cached as zero, and the server backfills old queue and history entries on startup. When nothing can be fetched — deleted or region-locked videos, or a network that cannot reach either service — the track queues link-only and still plays, marked "metadata missing".
 
 ## Build and Install
 
@@ -56,7 +56,7 @@ Devices on the LAN use `http://<machine-LAN-IP>:7777` (on macOS, `ipconfig getif
 |---|---|
 | `PORT` / `HOST` | page server port (default 7777) / bind address |
 | `ADMIN_PORT` | admin console port, default 7778 |
-| `KARAQUEUE_VIEW_API` / `KARAQUEUE_SPI_API` | override the bilibili endpoints (testing); `KARAQUEUE_OEMBED_API` overrides the YouTube one |
+| `KARAQUEUE_VIEW_API` / `KARAQUEUE_SPI_API` | override the bilibili endpoints (testing); `KARAQUEUE_OEMBED_API` / `KARAQUEUE_YT_PLAYER_API` / `KARAQUEUE_YT_WATCH_PAGE` override the YouTube ones |
 | `KARAQUEUE_PROXY` | force a proxy for cross-network requests, `host:port` or `http://host:port`. Unset: reads `HTTPS_PROXY`, then the macOS system proxy. Public hosts only; localhost, LAN and bilibili always connect direct |
 
 ### Browser extension
@@ -150,7 +150,7 @@ Pull requests are welcome. Ground rules that keep the project easy to host on a 
 
 For tinkering — everything is JSON:
 
-- Public: `GET /`, `GET /api/state`, `GET /api/events` (SSE); `POST /api/submit` `{input, by, uid}`, `POST /api/withdraw` `{id, uid}`, `POST /api/advance`, `POST /api/skip`
+- Public: `GET /`, `GET /api/state`, `GET /api/events` (SSE); `POST /api/submit` `{input, by, uid}`, `POST /api/duration` `{id, duration_s}` (extension duration report), `POST /api/withdraw` `{id, uid}`, `POST /api/advance`, `POST /api/skip`
 - Admin (port 7778): additionally `GET /api/config`, `POST /api/config` `{allowQueuedDuplicates, oneSongPerGuest}`, `POST /api/delete` `{id}`, `POST /api/reorder` `{id, direction: up|down|top}` or `{id, index: 0-based slot}`, `POST /api/rerequest` `{id}`
 
 ### State and reset
