@@ -1118,8 +1118,14 @@ function enqueue(item) {
   broadcast();
 }
 
-/** Finish the current item (played|skipped) and promote the next one. */
-function advance(mark = "played") {
+/** Finish the current item (played|skipped) and promote the next one.
+ *  When `expected` is supplied, only advance if it still matches the
+ *  current id: a duplicate end report that lost the race becomes a no-op
+ *  instead of skipping the next track. */
+function advance(mark = "played", expected = null) {
+  if (expected && state.current?.id !== expected) {
+    return { finished: null, current: state.current, stale: true };
+  }
   const finished = state.current ? { ...state.current, status: mark, finished_at: new Date().toISOString() } : null;
   if (finished) {
     state.history.unshift(finished);
@@ -1678,8 +1684,9 @@ async function route(req, res, isAdmin = false) {
   }
 
   if (req.method === "POST" && (pathname === "/api/advance" || pathname === "/api/skip")) {
+    const body = await readJsonBody(req);
     const mark = pathname === "/api/skip" ? "skipped" : "played";
-    return sendJson(res, 200, advance(mark));
+    return sendJson(res, 200, advance(mark, body?.expected ?? null));
   }
 
   res.writeHead(404, { "Access-Control-Allow-Origin": "*" });

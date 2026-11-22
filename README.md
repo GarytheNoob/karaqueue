@@ -150,7 +150,7 @@ Pull requests are welcome. Ground rules that keep the project easy to host on a 
 
 For tinkering — everything is JSON:
 
-- Public: `GET /`, `GET /api/state`, `GET /api/events` (SSE); `POST /api/submit` `{input, by, uid}`, `POST /api/duration` `{id, duration_s}` (extension duration report), `POST /api/withdraw` `{id, uid}`, `POST /api/advance`, `POST /api/skip`
+- Public: `GET /`, `GET /api/state`, `GET /api/events` (SSE); `POST /api/submit` `{input, by, uid}`, `POST /api/duration` `{id, duration_s}` (extension duration report), `POST /api/withdraw` `{id, uid}`, `POST /api/advance` `{expected?}` (only advances while `expected` still matches the current track), `POST /api/skip`
 - Admin (port 7778): additionally `GET /api/config`, `POST /api/config` `{allowQueuedDuplicates, oneSongPerGuest}`, `POST /api/delete` `{id}`, `POST /api/reorder` `{id, direction: up|down|top}` or `{id, index: 0-based slot}`, `POST /api/rerequest` `{id}`
 
 ### State and reset

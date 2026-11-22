@@ -150,7 +150,7 @@ node server/karaoke.mjs            # 默认监听 0.0.0.0:7777，管理后台 0.
 
 调试用，全部 JSON：
 
-- 公共：`GET /`、`GET /api/state`、`GET /api/events`（SSE）；`POST /api/submit` `{input, by, uid}`、`POST /api/duration` `{id, duration_s}`（插件上报时长）、`POST /api/withdraw` `{id, uid}`、`POST /api/advance`、`POST /api/skip`
+- 公共：`GET /`、`GET /api/state`、`GET /api/events`（SSE）；`POST /api/submit` `{input, by, uid}`、`POST /api/duration` `{id, duration_s}`（插件上报时长）、`POST /api/withdraw` `{id, uid}`、`POST /api/advance` `{expected?}`（仅在 `expected` 仍匹配当前曲目时推进）、`POST /api/skip`
 - 管理端口（7778）：另有 `GET /api/config`、`POST /api/config` `{allowQueuedDuplicates, oneSongPerGuest}`、`POST /api/delete` `{id}`、`POST /api/reorder` `{id, direction: up|down|top}` 或 `{id, index: 从0开始的落位}`、`POST /api/rerequest` `{id}`
 
 ### 状态与复位

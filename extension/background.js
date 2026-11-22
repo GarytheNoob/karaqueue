@@ -72,8 +72,22 @@ async function getState() {
   return api("/api/state");
 }
 
-async function advance(mark = "played") {
-  return api("/api/advance", { method: "POST", body: JSON.stringify({ mark }) });
+async function advance(mark = "played", expected = null) {
+  return api("/api/advance", { method: "POST", body: JSON.stringify({ mark, expected }) });
+}
+
+/** Serialize end reports. The debounce below reads and writes
+ *  `storage.session` asynchronously, so two reports arriving together can
+ *  both pass it; a single in-worker chain closes that gap. The server's
+ *  expected-id check remains the cross-worker/restart guarantee. */
+let endedChain = Promise.resolve();
+function handleEndedQueued(msg, tabId) {
+  const run = endedChain.then(
+    () => handleEnded(msg, tabId),
+    () => handleEnded(msg, tabId),
+  );
+  endedChain = run.catch(() => {});
+  return run;
 }
 
 /* ------------------------------------------------------------------ */
@@ -164,7 +178,7 @@ async function reconcile(preferredTabId) {
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg?.type === "VIDEO_ENDED") {
-    handleEnded(msg, sender.tab?.id)
+    handleEndedQueued(msg, sender.tab?.id)
       .then((res) => sendResponse(res ?? { ok: true }))
       .catch((e) => {
         console.error("[karaqueue] ended hand-off failed:", e);
@@ -215,7 +229,11 @@ async function handleEnded(msg, tabId) {
   }
   await chrome.storage.session.set({ lastAdvanceAt: now });
 
-  const result = await advance("played");
+  const result = await advance("played", current?.id ?? null);
+  if (result.stale) {
+    console.log(`[karaqueue] advance ignored; current is already ${result.current?.id ?? "(idle)"}`);
+    return { ok: true, current: result.current?.id ?? null };
+  }
   const next = result.current;
   console.log(`[karaqueue] advanced: ${result.finished?.id ?? "(none)"} -> ${next?.id ?? "(now idle)"}`);
   if (!next || !tabId) return { ok: true, current: next?.id ?? null };
