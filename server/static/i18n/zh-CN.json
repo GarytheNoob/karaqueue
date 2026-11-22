@@ -63,6 +63,7 @@
   "card.meta_missing": "（元数据未获取）",
   "srv.parse_failed": "没认出视频链接（支持 B 站 BV/av 号、YouTube 视频链接）",
   "srv.b23_expand_failed": "b23 短链展开失败（网络或风控），请直接贴完整链接或 BV 号",
+  "srv.b23_bad_target": "b23 短链跳转到了非 B 站地址，请直接贴完整链接或 BV 号",
   "srv.bili_412": "B 站风控拦截（HTTP 412），请求被判定为异常客户端；稍后再试或先缓存元数据",
   "srv.bili_403": "B 站拒绝访问（HTTP 403）",
   "srv.bili_429": "B 站限流（HTTP 429），请求太频繁",

@@ -63,6 +63,7 @@
   "card.meta_missing": "（元數據未取得）",
   "srv.parse_failed": "沒認出影片連結（支援 B 站 BV/av 號、YouTube 影片連結）",
   "srv.b23_expand_failed": "b23 短連結展開失敗（網絡或風控），請直接貼完整連結或 BV 號",
+  "srv.b23_bad_target": "b23 短連結跳轉到了非 B 站地址，請直接貼完整連結或 BV 號",
   "srv.bili_412": "B 站風控攔截（HTTP 412），請求被判斷為異常客戶端；稍後再試或先緩存元數據",
   "srv.bili_403": "B 站拒絕存取（HTTP 403）",
   "srv.bili_429": "B 站限流（HTTP 429），請求太頻繁",

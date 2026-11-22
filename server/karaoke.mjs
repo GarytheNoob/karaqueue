@@ -550,6 +550,63 @@ const PAGE_RE = /[?&]p=(\d+)/;
 // watch?v=, youtu.be, /shorts/, /embed/, /live/ all land on one video id.
 // The lookahead keeps following id characters out of the 11-char group.
 const YT_RAW_RE = /(?:youtube\.com\/watch\?[^ ]*?v=|youtube\.com\/(?:shorts|embed|live)\/|youtu\.be\/)([A-Za-z0-9_-]{11})(?![A-Za-z0-9_-])/i;
+const B23_MAX_REDIRECTS = 5;
+
+/** Match a hostname exactly or as a subdomain, ignoring a trailing dot. */
+function hostInDomain(hostname, domain) {
+  const h = String(hostname || "").toLowerCase().replace(/\.$/, "");
+  return h === domain || h.endsWith(`.${domain}`);
+}
+
+/** True only when the parsed URL's real host is b23.tv. A `b23.tv`
+ *  substring in someone else's query string must not trigger a fetch. */
+function isB23Url(value) {
+  try {
+    const u = new URL(value);
+    return (u.protocol === "http:" || u.protocol === "https:") && hostInDomain(u.hostname, "b23.tv");
+  } catch {
+    return false;
+  }
+}
+
+/** Redirect targets we are willing to follow: b23.tv and Bilibili itself. */
+function isBilibiliUrl(value) {
+  try {
+    const u = new URL(value);
+    if (u.protocol !== "http:" && u.protocol !== "https:") return false;
+    return hostInDomain(u.hostname, "b23.tv") || hostInDomain(u.hostname, "bilibili.com");
+  } catch {
+    return false;
+  }
+}
+
+/** Expand a b23.tv short link with manual redirects, validating every hop
+ *  so a short link cannot make the server request an arbitrary address. */
+async function expandB23(input) {
+  let current = input;
+  for (let hop = 0; hop < B23_MAX_REDIRECTS; hop++) {
+    if (!isBilibiliUrl(current)) {
+      throw new UserInputError(
+        "b23 短链跳转到了非 B 站地址，请直接贴完整链接或 BV 号",
+        "srv.b23_bad_target",
+      );
+    }
+    const res = await fetch(current, {
+      headers: { "User-Agent": BROWSER_UA },
+      redirect: "manual",
+      signal: AbortSignal.timeout(8000),
+    });
+    if (res.status >= 300 && res.status < 400) {
+      const location = res.headers.get("location");
+      if (!location) throw new Error("b23 redirect has no location");
+      current = new URL(location, current).href;
+      continue;
+    }
+    if (!res.ok) throw new Error(`b23 redirect HTTP ${res.status}`);
+    return res.url || current;
+  }
+  throw new Error("too many b23 redirects");
+}
 
 /**
  * Parse a user submission (BV id, av id, full URL, b23.tv short link)
@@ -569,16 +626,13 @@ async function parseInput(rawInput) {
     input = urlMatch[0].replace(/[^\x21-\x7E]+$/g, "");
   }
 
-  // b23.tv short links are redirects; follow them once to get the real URL.
-  if (/b23\.tv/i.test(input)) {
+  // b23.tv short links are redirects; expand only real b23 hosts and keep
+  // every redirect hop inside Bilibili's domains.
+  if (isB23Url(input)) {
     try {
-      const res = await fetch(input, {
-        headers: { "User-Agent": BROWSER_UA },
-        redirect: "follow",
-        signal: AbortSignal.timeout(8000),
-      });
-      input = res.url;
-    } catch {
+      input = await expandB23(input);
+    } catch (err) {
+      if (err instanceof UserInputError) throw err;
       throw new UserInputError(
         "b23 短链展开失败（网络或风控），请直接贴完整链接或 BV 号",
         "srv.b23_expand_failed",

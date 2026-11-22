@@ -63,6 +63,7 @@
   "card.meta_missing": "(metadata not fetched)",
   "srv.parse_failed": "Unrecognized video link (paste a Bilibili BV/av id or a full video link)",
   "srv.b23_expand_failed": "Could not expand the b23 short link (network or risk control). Paste the full link or a BV id instead",
+  "srv.b23_bad_target": "The b23 short link redirected outside Bilibili. Paste the full link or a BV id instead",
   "srv.bili_412": "Bilibili flagged this client as suspicious (HTTP 412); retry later or let cached metadata fill in first",
   "srv.bili_403": "Bilibili denied access (HTTP 403)",
   "srv.bili_429": "Bilibili rate-limited the request (HTTP 429)",
