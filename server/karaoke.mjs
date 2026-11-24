@@ -57,6 +57,9 @@ import { fileURLToPath } from "node:url";
 
 const PORT = Number(process.env.PORT || 7777);
 const HOST = process.env.HOST || "0.0.0.0";
+// The server may bind to every interface, but the startup URL is for the
+// person running it. Show loopback instead of the unroutable 0.0.0.0/::.
+const DISPLAY_HOST = HOST === "0.0.0.0" || HOST === "::" ? "127.0.0.1" : HOST;
 const ADMIN_PORT = Number(process.env.ADMIN_PORT || 7778);
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
 const STATIC_DIR = path.join(ROOT, "static");
@@ -1849,12 +1852,12 @@ loadProxyConfig();
 http
   .createServer(requestHandler)
   .listen(PORT, HOST, () => {
-    console.log(`[karaqueue] queue server on http://${HOST}:${PORT}`);
+    console.log(`[karaqueue] queue server on http://${DISPLAY_HOST}:${PORT}`);
   });
 http
   .createServer(adminHandler)
   .listen(ADMIN_PORT, HOST, () => {
-    console.log(`[karaqueue] admin console on http://${HOST}:${ADMIN_PORT}`);
+    console.log(`[karaqueue] admin console on http://${DISPLAY_HOST}:${ADMIN_PORT}`);
   });
 
 // Queues from before duration support, or from a bot-walled period, get
