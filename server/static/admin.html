@@ -45,26 +45,8 @@
       <div id="now"></div>
     </section>
 
-    <!-- 2. The running order: the screen's working list. -->
-    <section class="sec">
-      <div class="sec-head">
-        <h2 data-i18n="head.queue">队列</h2>
-        <span class="count" id="queueCount"></span>
-      </div>
-      <div class="hint" data-i18n="admin.queue_hint">拖动左侧把手调整顺序，或用键盘方向键；「提前」把这首歌移到队首，「移出」把它撤下队列。改动实时同步到大屏和所有点歌页。</div>
-      <div id="queue"></div>
-    </section>
-
-    <!-- 3. Played history, with the one-tap re-request. -->
-    <section class="sec">
-      <div class="sec-head">
-        <h2 data-i18n="head.history">已播历史</h2>
-        <span class="count" id="historyCount"></span>
-      </div>
-      <div id="history"></div>
-    </section>
-
-    <!-- 4. Rules change once a night: they close the page, not open it. -->
+    <!-- 2. Rules sit above the working lists so the host can see and
+         change tonight's constraints before touching the queue. -->
     <section class="sec span-2">
       <div class="sec-head">
         <h2 data-i18n="admin.rules_head">点歌规则</h2>
@@ -88,6 +70,25 @@
                   aria-checked="false"></button>
         </div>
       </div>
+    </section>
+
+    <!-- 3. The running order: the screen's working list. -->
+    <section class="sec">
+      <div class="sec-head">
+        <h2 data-i18n="head.queue">队列</h2>
+        <span class="count" id="queueCount"></span>
+      </div>
+      <div class="hint" data-i18n="admin.queue_hint">拖动左侧把手调整顺序，或用键盘方向键；「提前」把这首歌移到队首，「移出」把它撤下队列。改动实时同步到大屏和所有点歌页。</div>
+      <div id="queue"></div>
+    </section>
+
+    <!-- 4. Played history, with the one-tap re-request. -->
+    <section class="sec">
+      <div class="sec-head">
+        <h2 data-i18n="head.history">已播历史</h2>
+        <span class="count" id="historyCount"></span>
+      </div>
+      <div id="history"></div>
     </section>
   </div>
 </main>
