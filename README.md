@@ -1,6 +1,6 @@
 # KaraQueue
 
-> [English](README.md) · [简体中文](README_zh-sc.md)
+> [English](README.md) · [简体中文](README_zh-sc.md) · [Changelog](CHANGELOG.md)
 
 [![Release](https://img.shields.io/github/v/release/GarytheNoob/karaqueue)](https://github.com/GarytheNoob/karaqueue/releases/latest)
 [![Downloads](https://img.shields.io/github/downloads/GarytheNoob/karaqueue/total)](https://github.com/GarytheNoob/karaqueue/releases/latest)
@@ -18,7 +18,7 @@ A LAN karaoke queue machine. Guests submit bilibili or YouTube videos from their
 
 <div align="center">
 
-| ![](docs/images/admin.png) | ![](docs/images/popup.png) |
+| <img src="docs/images/admin.png" alt="KaraQueue admin console" width="640"> | <img src="docs/images/popup.png" alt="KaraQueue extension popup" width="300"> |
 |:---:|:---:|
 | admin console | extension popup |
 
@@ -28,9 +28,9 @@ A LAN karaoke queue machine. Guests submit bilibili or YouTube videos from their
 
 - **Phone-first submitting.** The form accepts BV ids, av ids, full watch URLs, multi-part `?p=N` links and `b23.tv` short links; YouTube `watch?v=`, `youtu.be` and shorts links; and raw share text copied from either mobile app. Each part (P) of a multi-part bilibili video counts as one track. Playlists never expand; a YouTube link with `list=` queues that single video.
 - **Instant playback.** A submission while the room is idle starts playing immediately and every client follows. A queued track plays next when the current one ends — the extension does the switching, so the session needs no clicks after the first one.
-- **Host controls.** Skip, delete, reorder (drag, to-front button, or arrow keys), and re-request any played track — from the admin console or the extension popup.
+- **Host controls.** Skip, delete, reorder (drag, to-front button, or arrow keys), and re-request any played track — from the admin console; skip is also in the extension popup.
 - **Two room rules.** Allow the same track in the queue more than once; fair rotation, one song per guest.
-- **Withdraw and history.** Guests can withdraw their own requests anytime; played tracks stay in a history where one tap puts a song back in the queue. The admin console can export that history as a UTF-8 CSV or clear it when the night is over.
+- **Withdraw and history.** Guests can withdraw their own requests anytime; played tracks stay in a history. The admin console can re-request an entry, export the history as a UTF-8 CSV, or clear it when the night is over.
 - **Real-time, sized for phones.** Every change rides on SSE, around 20 ms. Mobile browsers freeze background tabs and drop SSE connections, so each page re-syncs on refocus and polls every 5 seconds while visible.
 - **Fully offline LAN stack.** Server, both pages and the extension are vanilla JS with zero dependencies; no CDN assets or fonts, everything ships in this repository.
 - **Three interface languages** (English / Simplified / Traditional) with a header switcher; server-generated messages follow the chosen page language.
@@ -40,7 +40,7 @@ About metadata: bilibili throttles its metadata API under load (often HTTP 412),
 
 ## Build and Install
 
-**Requirements:** Node ≥ 18 (for the built-in fetch). Fetching YouTube metadata may also need a proxy, see [Troubleshooting](#errors-and-troubleshooting).
+**Requirements:** Node ≥ 18 (for the built-in fetch). The server runs on macOS, Windows and Linux; on Windows it reads the system proxy and Wi-Fi SSID automatically. Fetching YouTube metadata may also need a proxy, see [Troubleshooting](#errors-and-troubleshooting).
 
 ### Server
 
@@ -57,7 +57,7 @@ Devices on the LAN use `http://<machine-LAN-IP>:7777` (on macOS, `ipconfig getif
 | `PORT` / `HOST` | page server port (default 7777) / bind address |
 | `ADMIN_PORT` | admin console port, default 7778 |
 | `KARAQUEUE_VIEW_API` / `KARAQUEUE_SPI_API` | override the bilibili endpoints (testing); `KARAQUEUE_OEMBED_API` / `KARAQUEUE_YT_PLAYER_API` / `KARAQUEUE_YT_WATCH_PAGE` override the YouTube ones |
-| `KARAQUEUE_PROXY` | force a proxy for cross-network requests, `host:port` or `http://host:port`. Unset: reads `HTTPS_PROXY`, then the macOS system proxy. Public hosts only; localhost, LAN and bilibili always connect direct |
+| `KARAQUEUE_PROXY` | force a proxy for cross-network requests, `host:port` or `http://host:port`. Unset: reads `HTTPS_PROXY`, then the macOS/Windows system proxy. Public hosts only; localhost, LAN and bilibili always connect direct |
 
 ### Browser extension
 
@@ -94,7 +94,7 @@ Guests never install anything: phones just open `http://<machine-LAN-IP>:7777`.
 - Long titles never wrap: hovering (or tapping on touch) sweeps the title left until its end is visible, then stops. Titles that already fit never scroll.
 - Submit and withdraw results appear as short toasts at the bottom; failures repeat the server's localized sentence and disappear after 4.5 seconds (click to dismiss sooner).
 - A collapsible drawer (☰ in the header) shows the host's Wi-Fi name and LAN address plus a QR code that opens the request page. The QR encodes the address the request actually arrived on, so VPN or tunnel interfaces do not break it.
-- The played history lives on a second page, oldest first with sequence numbers — 1 is the first song of the night; "play again" re-queues an entry.
+- The played history lives on a second page, oldest first with sequence numbers — 1 is the first song of the night.
 - The mobile page has no skip button; skipping is the host's job.
 
 ### Host (admin console / popup)
@@ -102,6 +102,7 @@ Guests never install anything: phones just open `http://<machine-LAN-IP>:7777`.
 - Skip the current track immediately — popup or console.
 - Manage the queue: delete (✕), drag by the grip handle, "to front" button, or ArrowUp/ArrowDown on a focused grip.
 - Re-request any played track: it jumps back into the queue and starts right away if the room is idle.
+- Export the played history as a UTF-8 CSV, or clear it when the night is over — admin console only.
 
 ### Room rules
 
@@ -119,7 +120,7 @@ Both pages carry an `En | 简 | 繁` segmented switcher (a sliding pill, not a d
 - **Popup raises `TypeError: Failed to fetch`:** nothing answered at the configured address. Check the server runs on the host machine (`node server/karaoke.mjs`), then open `http://<host-ip>:7777/api/state` in a browser — a JSON blob confirms the server is up.
 - **Popup raises `Unexpected token '<', "<!DOCTYPE "... is not valid JSON`:** the configured address served an HTML page instead of KaraQueue's JSON, almost always another web service on port 80 (e.g. a router admin page) because the `:7777` port is missing. The address must look like `http://192.168.1.5:7777`.
 - **No automatic switching or skipped reports are ignored (Firefox):** the extension lacks site access. Open `about:addons` → KaraQueue → Permissions, or press **Save** in the popup and approve the prompt again.
-- **A YouTube entry stays "metadata missing" and always queues link-only:** the server cannot reach youtube.com directly and found no usable proxy. Turn on the macOS system proxy (HTTP mode, not SOCKS-only) or set `KARAQUEUE_PROXY=127.0.0.1:7890` with your proxy's port, then restart the server. The startup log names the proxy it found.
+- **A YouTube entry stays "metadata missing" and always queues link-only:** the server cannot reach youtube.com directly and found no usable proxy. Turn on the macOS/Windows system proxy (HTTP mode, not SOCKS-only) or set `KARAQUEUE_PROXY=127.0.0.1:7890` with your proxy's port, then restart the server. The startup log names the proxy it found.
 - **The big screen keeps opening new tabs:** the extension there predates the tab-reuse fix; reload it in `chrome://extensions` (or `about:debugging`).
 - **A page looks stale after a skip or another change:** mobile browsers freeze background tabs and drop the SSE connection. Bring the tab to the foreground — each page re-syncs on refocus and polls every 5 seconds while visible.
 - **Switching lags or misfires around track end:** the player's own autoplay races the extension. Turn off bilibili's native "auto-play next" toggle and YouTube's "Autoplay next video".
@@ -159,7 +160,7 @@ Queue state lives in `server/queue.json` and the metadata cache in `server/meta-
 
 ### Known limits
 
-- LAN only, plain http, no TLS and no login — anyone on the network can open the admin console.
+- LAN only, plain http, no TLS and no login — anyone on the network can open the admin console, delete queue items, or clear history.
 - bilibili and YouTube only; playlists act as one video; niconico is out of scope.
 - Server and big-screen browser need a network path that reaches YouTube (direct or via proxy); bilibili always connects direct.
 - Fair rotation and withdrawal ownership are per browser (a uid cookie), not per nickname.

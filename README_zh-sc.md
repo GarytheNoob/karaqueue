@@ -1,6 +1,6 @@
 # KaraQueue
 
-> [English](README.md) · [简体中文](README_zh-sc.md)
+> [English](README.md) · [简体中文](README_zh-sc.md) · [更新日志](CHANGELOG.md)
 
 [![Release](https://img.shields.io/github/v/release/GarytheNoob/karaqueue)](https://github.com/GarytheNoob/karaqueue/releases/latest)
 [![Downloads](https://img.shields.io/github/downloads/GarytheNoob/karaqueue/total)](https://github.com/GarytheNoob/karaqueue/releases/latest)
@@ -18,7 +18,7 @@
 
 <div align="center">
 
-| ![](docs/images/admin.png) | ![](docs/images/popup.png) |
+| <img src="docs/images/admin.png" alt="KaraQueue 管理后台" width="640"> | <img src="docs/images/popup.png" alt="KaraQueue 插件弹窗" width="300"> |
 |:---:|:---:|
 | 管理后台 | 插件弹窗 |
 
@@ -28,9 +28,9 @@
 
 - **手机优先的点歌。** 表单认得 BV 号、av 号、完整网页链接、`?p=N` 分 P 链接和 `b23.tv` 短链；YouTube 的 `watch?v=`、`youtu.be`、shorts 链接；还有两家手机 App 的分享原文。B 站多 P 按单 P 算一首。歌单一律不展开；带 `list=` 的 YouTube 链接只入队单个视频。
 - **即刻开播。** 房间空闲时提交的歌立刻开播，所有客户端跟着切；队列里的歌唱完自动切下一首——切歌由插件完成，整晚只有第一次手势。
-- **房主控制。** 跳过、移出、调序（拖拽 / 置顶按钮 / 方向键）、重播已播歌曲——在管理后台或插件弹窗里做。
+- **房主控制。** 跳过、移出、调序（拖拽 / 置顶按钮 / 方向键）、重播已播歌曲——在管理后台做；跳过也可以从插件弹窗发起。
 - **两条房间规则。** 允许队列重复点同一首；公平轮唱，每人限一首。
-- **撤回与历史。** 客人随时能撤回自己点的歌；播过的进已播历史，一键回队。管理后台可以把历史导出为 UTF-8 CSV，或在一晚结束后清空。
+- **撤回与历史。** 客人随时能撤回自己点的歌；播过的进已播历史。管理后台可以重播某一条、把历史导出为 UTF-8 CSV，或在一晚结束后清空。
 - **实时，为手机优化。** 所有变更走 SSE，实测约 20 ms。手机浏览器会冻结后台标签、掐断 SSE，所以每个页面回前台即对账，可见期间每 5 秒轮询兜底。
 - **完全离线的局域网栈。** 服务端、两个页面和插件都是原生 JS，零依赖；不取任何 CDN 资源或字体，全部东西都在这个仓库里。
 - **三语界面**（英 / 简 / 繁），页头切换；服务端生成的提示跟随页面所选语言。
@@ -40,7 +40,7 @@
 
 ## 构建与安装
 
-**要求：Node ≥ 18**（用内置 fetch）。抓 YouTube 元数据可能还需要代理，见[错误排查](#错误排查)。
+**要求：Node ≥ 18**（用内置 fetch）。服务端可跑在 macOS、Windows 和 Linux；Windows 上会自动读取系统代理和 Wi-Fi 名称。抓 YouTube 元数据可能还需要代理，见[错误排查](#错误排查)。
 
 ### 服务端
 
@@ -57,7 +57,7 @@ node server/karaoke.mjs            # 默认监听 0.0.0.0:7777，管理后台 0.
 | `PORT` / `HOST` | 点歌页端口（默认 7777）/ 绑定地址 |
 | `ADMIN_PORT` | 管理后台端口，默认 7778 |
 | `KARAQUEUE_VIEW_API` / `KARAQUEUE_SPI_API` | 覆盖 B 站接口地址（测试用）；`KARAQUEUE_OEMBED_API` / `KARAQUEUE_YT_PLAYER_API` / `KARAQUEUE_YT_WATCH_PAGE` 同理覆盖 YouTube |
-| `KARAQUEUE_PROXY` | 跨网请求强制走代理，写法 `host:port` 或 `http://host:port`。不设时读 `HTTPS_PROXY`，再退回 macOS 系统代理。只对公网目标生效；本机、局域网和 B 站一律直连 |
+| `KARAQUEUE_PROXY` | 跨网请求强制走代理，写法 `host:port` 或 `http://host:port`。不设时读 `HTTPS_PROXY`，再退回 macOS / Windows 系统代理。只对公网目标生效；本机、局域网和 B 站一律直连 |
 
 ### 浏览器插件
 
@@ -94,7 +94,7 @@ node server/karaoke.mjs            # 默认监听 0.0.0.0:7777，管理后台 0.
 - 长标题不折行：悬停（触屏则点一下）才向左滚一遍，滚到末尾停住；放得下的标题不滚。
 - 提交和撤回的结果用屏幕底部的短 toast；失败会原样复述服务器的本地化句子，4.5 秒后消失（点击可提前关掉）。
 - 页头可折叠抽屉（☰）显示主机的 Wi-Fi 名称、局域网地址和直达点歌页的二维码。二维码编码的是当前请求实际到达的地址，VPN、隧道接口不会把它带偏。
-- 已播历史在二级页面，旧的在上、带序号——序号 1 是全场第一首；"再点一次"把歌曲排回队列。
+- 已播历史在二级页面，旧的在上、带序号——序号 1 是全场第一首。
 - 手机端没有跳过按钮，切歌是房主的职责。
 
 ### 房主（管理后台 / 插件弹窗）
@@ -102,6 +102,7 @@ node server/karaoke.mjs            # 默认监听 0.0.0.0:7777，管理后台 0.
 - 跳过当前曲目，立即生效——弹窗或后台都能发。
 - 管理队列：移出（✕）、按住把手拖拽、"提前"一键置顶、聚焦把手后按 ↑ / ↓ 方向键。
 - 重播已播的任意一首：排回队列；房间空闲时立刻开播。
+- 把已播历史导出为 UTF-8 CSV，或在一晚结束后清空——仅管理后台。
 
 ### 房间规则
 
@@ -119,7 +120,7 @@ node server/karaoke.mjs            # 默认监听 0.0.0.0:7777，管理后台 0.
 - **弹窗报 `TypeError: Failed to fetch`：** 配置的地址没有应答。先确认服务在大屏机器上跑着（`node server/karaoke.mjs`），再用浏览器开 `http://<大屏 IP>:7777/api/state`，能看到 JSON 就说明服务正常。
 - **弹窗报 `Unexpected token '<', "<!DOCTYPE "... is not valid JSON：** 配置的地址返回了网页而不是 KaraQueue 的 JSON，基本都是漏了 `:7777`、请求打到了 80 端口的别的服务（比如路由器管理页）。地址要写成 `http://192.168.1.5:7777` 这种形式。
 - **不自动切歌 / 跳过上报被无视（Firefox）：** 插件没有站点访问权限。开 `about:addons` → KaraQueue → 权限，或在弹窗里点一次**保存**并再次批准授权。
-- **YouTube 条目一直"元数据未获取"、总按纯链接入队：** 服务器直连不上 youtube.com，也没找到代理。打开 macOS 系统代理（HTTP 模式，只开 SOCKS 不算），或设 `KARAQUEUE_PROXY=127.0.0.1:7890`（端口填代理的），然后重启服务端。启动日志会写它发现了哪个代理。
+- **YouTube 条目一直"元数据未获取"、总按纯链接入队：** 服务器直连不上 youtube.com，也没找到代理。打开 macOS / Windows 系统代理（HTTP 模式，只开 SOCKS 不算），或设 `KARAQUEUE_PROXY=127.0.0.1:7890`（端口填代理的），然后重启服务端。启动日志会写它发现了哪个代理。
 - **大屏不停开新标签页：** 那台机上的插件是旧版。到 `chrome://extensions`（或 `about:debugging`）重载一次。
 - **页面在跳过等操作后没跟上：** 手机浏览器冻结后台标签、掐断 SSE。把标签切回前台——回前台即对账，可见期间每 5 秒轮询兜底。
 - **切歌在歌曲结尾附近变慢或抢跳：** 播放器自身的连播在和插件抢。关掉 B 站"自动连播"，关掉 YouTube 的"自动播放下一个视频"。
@@ -159,7 +160,7 @@ node server/karaoke.mjs            # 默认监听 0.0.0.0:7777，管理后台 0.
 
 ### 已知限制
 
-- 仅限局域网，明文 http，无 TLS、无登录——局域网里的任何人都能打开管理后台。
+- 仅限局域网，明文 http，无 TLS、无登录——局域网里的任何人都能打开管理后台、移出队列或清空历史。
 - 仅 B 站和 YouTube；歌单按单个视频处理；niconico 暂未纳入。
 - 服务端和大屏浏览器都需要能连上 YouTube 的网络路径（直连或代理）；B 站一律直连。
 - 公平轮唱和撤回的归属按浏览器（uid Cookie）算，不按昵称。

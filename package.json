@@ -1,7 +1,7 @@
 {
   "name": "karaqueue",
-  "version": "1.0.0",
-  "description": "LAN karaoke queue player: request bilibili tracks from your phone, a Chrome extension plays them in order.",
+  "version": "1.1.0",
+  "description": "LAN karaoke queue player: request bilibili or YouTube tracks from your phone, a Chromium/Firefox extension plays them in order.",
   "private": true,
   "type": "module",
   "license": "MIT",
