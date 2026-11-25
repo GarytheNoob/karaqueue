@@ -82,11 +82,21 @@
       <div id="queue"></div>
     </section>
 
-    <!-- 4. Played history, with the one-tap re-request. -->
+    <!-- 4. Played history, with the one-tap re-request. Export and clear
+         are admin-only; the public page keeps its read-only history. -->
     <section class="sec">
-      <div class="sec-head">
+      <div class="sec-head sec-head--history">
         <h2 data-i18n="head.history">已播历史</h2>
         <span class="count" id="historyCount"></span>
+        <div class="history-tools" id="historyTools">
+          <button class="linkbtn" id="exportHistory" type="button" data-i18n="admin.export_csv">导出 CSV</button>
+          <button class="linkbtn linkbtn--danger" id="clearHistory" type="button" data-i18n="admin.clear_history">清空历史</button>
+        </div>
+      </div>
+      <div class="history-confirm" id="historyConfirm" hidden>
+        <span class="history-confirm-text" id="historyConfirmText"></span>
+        <button class="linkbtn linkbtn--danger" id="confirmClear" type="button" data-i18n="admin.clear_confirm_btn">确认清空</button>
+        <button class="linkbtn" id="cancelClear" type="button" data-i18n="admin.cancel">取消</button>
       </div>
       <div id="history"></div>
     </section>
@@ -236,7 +246,81 @@ function render(state) {
   for (const [id, key] of switchIds) {
     $(id).setAttribute("aria-checked", String(!!state.config[key]));
   }
+  const hasHistory = state.history.length > 0;
+  $("exportHistory").disabled = !hasHistory;
+  $("clearHistory").disabled = !hasHistory;
+  if (!hasHistory) setClearConfirm(false);
+  else if (!$("historyConfirm").hidden) {
+    $("historyConfirmText").textContent = t("admin.clear_confirm", { n: state.history.length });
+  }
   enhanceMarquee();
+}
+
+/** Swap the history actions for the inline clear confirmation. */
+function setClearConfirm(open) {
+  $("historyTools").hidden = open;
+  $("historyConfirm").hidden = !open;
+  if (open) {
+    $("historyConfirmText").textContent = t("admin.clear_confirm", {
+      n: lastState?.history?.length ?? 0,
+    });
+  }
+}
+
+/** Quote one CSV field; titles and nicknames can carry commas or quotes. */
+function csvCell(value) {
+  const text = String(value ?? "");
+  return /[",\r\n]/.test(text) || /^\s|\s$/.test(text)
+    ? `"${text.replace(/"/g, '""')}"`
+    : text;
+}
+
+/* Export the visible history as a UTF-8 CSV. The BOM keeps Excel on
+ * Windows from mangling Chinese/Japanese titles; CRLF is Excel-friendly. */
+async function exportHistoryCsv() {
+  try {
+    const res = await fetch(BASE + "/api/state");
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const state = await res.json();
+    const history = Array.isArray(state.history) ? state.history : [];
+    if (!history.length) return;
+    const lines = [
+      ["status", "requested_by", "url", "title"],
+      ...history.slice().reverse().map((item) => [
+        item.status || "played",
+        item.requested_by ?? "",
+        item.web_url ?? "",
+        item.title ?? "",
+      ]),
+    ].map((row) => row.map(csvCell).join(","));
+    const blob = new Blob([`\uFEFF${lines.join("\r\n")}\r\n`], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    const now = new Date();
+    const stamp = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+    link.href = url;
+    link.download = `karaqueue-history-${stamp}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    showToast("ok", t("admin.exported", { n: history.length }));
+  } catch (err) {
+    showToast("fail", t("admin.alert_action_failed", { e: err.message }));
+  }
+}
+
+async function clearHistoryNow() {
+  try {
+    const data = await mutate("/api/history/clear");
+    setClearConfirm(false);
+    if (data.state) render(data.state);
+    else await refresh();
+    showToast("ok", t("admin.cleared", { n: data.removed ?? 0 }));
+  } catch (err) {
+    setClearConfirm(false);
+    showToast("fail", t("admin.alert_action_failed", { e: err.message }));
+  }
 }
 
 /* Click handling for the queue action buttons. Resolving the target with
@@ -275,6 +359,11 @@ for (const [id, key] of switchIds) {
     }
   });
 }
+
+$("exportHistory").addEventListener("click", exportHistoryCsv);
+$("clearHistory").addEventListener("click", () => setClearConfirm(true));
+$("confirmClear").addEventListener("click", clearHistoryNow);
+$("cancelClear").addEventListener("click", () => setClearConfirm(false));
 
 async function refresh() {
   const res = await fetch(BASE + "/api/state");

@@ -33,6 +33,7 @@
  *   GET  /api/config      -> { config }
  *   POST /api/config      -> { allowQueuedDuplicates, oneSongPerGuest: boolean }
  *   POST /api/skip        -> skip the current track
+ *   POST /api/history/clear -> clear played history (current/queue untouched)
  *   POST /api/delete      -> { id }; remove a queued track
  *   POST /api/reorder     -> { id, direction: "up"|"down" } or
  *                            { id, index: absolute 0-based slot }
@@ -1186,6 +1187,17 @@ function deleteQueued(id) {
   return removed;
 }
 
+/** Clear played history (admin). Current and queue stay untouched. */
+function clearHistory() {
+  const removed = state.history.length;
+  if (!removed) return 0;
+  state.history = [];
+  state.revision += 1;
+  saveState();
+  broadcast();
+  return removed;
+}
+
 /** Move a queued item up, down, or all the way to the top (admin). */
 function reorderQueued(id, direction) {
   const idx = state.queue.findIndex((i) => i.id === id);
@@ -1731,6 +1743,12 @@ async function routeAdmin(req, res, url, pathname) {
 
   if (req.method === "GET" && pathname === "/api/state") {
     return sendJson(res, 200, publicState());
+  }
+
+  if (req.method === "POST" && pathname === "/api/history/clear") {
+    await readJsonBody(req);
+    const removed = clearHistory();
+    return sendJson(res, 200, { ok: true, removed, state: publicState() });
   }
 
   if (req.method === "GET" && pathname === "/api/events") {

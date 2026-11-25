@@ -30,7 +30,7 @@
 - **即刻开播。** 房间空闲时提交的歌立刻开播，所有客户端跟着切；队列里的歌唱完自动切下一首——切歌由插件完成，整晚只有第一次手势。
 - **房主控制。** 跳过、移出、调序（拖拽 / 置顶按钮 / 方向键）、重播已播歌曲——在管理后台或插件弹窗里做。
 - **两条房间规则。** 允许队列重复点同一首；公平轮唱，每人限一首。
-- **撤回与历史。** 客人随时能撤回自己点的歌；播过的进已播历史，一键回队。
+- **撤回与历史。** 客人随时能撤回自己点的歌；播过的进已播历史，一键回队。管理后台可以把历史导出为 UTF-8 CSV，或在一晚结束后清空。
 - **实时，为手机优化。** 所有变更走 SSE，实测约 20 ms。手机浏览器会冻结后台标签、掐断 SSE，所以每个页面回前台即对账，可见期间每 5 秒轮询兜底。
 - **完全离线的局域网栈。** 服务端、两个页面和插件都是原生 JS，零依赖；不取任何 CDN 资源或字体，全部东西都在这个仓库里。
 - **三语界面**（英 / 简 / 繁），页头切换；服务端生成的提示跟随页面所选语言。
@@ -151,7 +151,7 @@ node server/karaoke.mjs            # 默认监听 0.0.0.0:7777，管理后台 0.
 调试用，全部 JSON：
 
 - 公共：`GET /`、`GET /api/state`、`GET /api/events`（SSE）；`POST /api/submit` `{input, by, uid}`、`POST /api/duration` `{id, duration_s}`（插件上报时长）、`POST /api/withdraw` `{id, uid}`、`POST /api/advance` `{expected?}`（仅在 `expected` 仍匹配当前曲目时推进）、`POST /api/skip`
-- 管理端口（7778）：另有 `GET /api/config`、`POST /api/config` `{allowQueuedDuplicates, oneSongPerGuest}`、`POST /api/delete` `{id}`、`POST /api/reorder` `{id, direction: up|down|top}` 或 `{id, index: 从0开始的落位}`、`POST /api/rerequest` `{id}`
+- 管理端口（7778）：另有 `GET /api/config`、`POST /api/config` `{allowQueuedDuplicates, oneSongPerGuest}`、`POST /api/history/clear`、`POST /api/delete` `{id}`、`POST /api/reorder` `{id, direction: up|down|top}` 或 `{id, index: 从0开始的落位}`、`POST /api/rerequest` `{id}`
 
 ### 状态与复位
 

@@ -30,7 +30,7 @@ A LAN karaoke queue machine. Guests submit bilibili or YouTube videos from their
 - **Instant playback.** A submission while the room is idle starts playing immediately and every client follows. A queued track plays next when the current one ends — the extension does the switching, so the session needs no clicks after the first one.
 - **Host controls.** Skip, delete, reorder (drag, to-front button, or arrow keys), and re-request any played track — from the admin console or the extension popup.
 - **Two room rules.** Allow the same track in the queue more than once; fair rotation, one song per guest.
-- **Withdraw and history.** Guests can withdraw their own requests anytime; played tracks stay in a history where one tap puts a song back in the queue.
+- **Withdraw and history.** Guests can withdraw their own requests anytime; played tracks stay in a history where one tap puts a song back in the queue. The admin console can export that history as a UTF-8 CSV or clear it when the night is over.
 - **Real-time, sized for phones.** Every change rides on SSE, around 20 ms. Mobile browsers freeze background tabs and drop SSE connections, so each page re-syncs on refocus and polls every 5 seconds while visible.
 - **Fully offline LAN stack.** Server, both pages and the extension are vanilla JS with zero dependencies; no CDN assets or fonts, everything ships in this repository.
 - **Three interface languages** (English / Simplified / Traditional) with a header switcher; server-generated messages follow the chosen page language.
@@ -151,7 +151,7 @@ Pull requests are welcome. Ground rules that keep the project easy to host on a 
 For tinkering — everything is JSON:
 
 - Public: `GET /`, `GET /api/state`, `GET /api/events` (SSE); `POST /api/submit` `{input, by, uid}`, `POST /api/duration` `{id, duration_s}` (extension duration report), `POST /api/withdraw` `{id, uid}`, `POST /api/advance` `{expected?}` (only advances while `expected` still matches the current track), `POST /api/skip`
-- Admin (port 7778): additionally `GET /api/config`, `POST /api/config` `{allowQueuedDuplicates, oneSongPerGuest}`, `POST /api/delete` `{id}`, `POST /api/reorder` `{id, direction: up|down|top}` or `{id, index: 0-based slot}`, `POST /api/rerequest` `{id}`
+- Admin (port 7778): additionally `GET /api/config`, `POST /api/config` `{allowQueuedDuplicates, oneSongPerGuest}`, `POST /api/history/clear`, `POST /api/delete` `{id}`, `POST /api/reorder` `{id, direction: up|down|top}` or `{id, index: 0-based slot}`, `POST /api/rerequest` `{id}`
 
 ### State and reset
 
